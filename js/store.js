@@ -198,14 +198,55 @@ class Store {
     try { await API.create('logs', log); } catch {}
   }
 
-  // ===== 이미지 업로드 =====
+  // ===== 이미지 업로드 (자동 압축) =====
   async uploadImage(file) {
     if (file.size > 10 * 1024 * 1024) throw new Error('10MB 초과');
-    return new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(r.result);
-      r.onerror = rej;
-      r.readAsDataURL(file);
+    if (!file.type.startsWith('image/')) throw new Error('이미지 파일이 아닙니다');
+    
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1200;   // 최대 가로 크기
+          const MAX_HEIGHT = 1200;  // 최대 세로 크기
+          let width = img.width;
+          let height = img.height;
+          
+          // 비율 유지하며 크기 조정
+          if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+            const ratio = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // JPEG 80% 품질로 압축
+          const compressed = canvas.toDataURL('image/jpeg', 0.8);
+          
+          // 압축률 계산
+          const originalSize = file.size;
+          const compressedSize = Math.round(compressed.length * 0.75); // base64 → byte 추정
+          const ratio = Math.round((1 - compressedSize / originalSize) * 100);
+          
+          console.log(`📷 이미지 압축: ${(originalSize/1024).toFixed(0)}KB → ${(compressedSize/1024).toFixed(0)}KB (${ratio}% 절감)`);
+          
+          resolve(compressed);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => reject(new Error('이미지 로드 실패'));
+      
+      const reader = new FileReader();
+      reader.onload = e => { img.src = e.target.result; };
+      reader.onerror = () => reject(new Error('파일 읽기 실패'));
+      reader.readAsDataURL(file);
     });
   }
   // ===== 매물 =====
