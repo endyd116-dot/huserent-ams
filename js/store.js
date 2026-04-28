@@ -14,12 +14,12 @@ class Store {
     if (!this.currentUser) return;
     try {
       showLoading(true);
-      const cols = ['properties','bookings','expenses','chats','users','groups','platforms','internet','products','schedule','logs','profileRequests','majorCats','subCats','userNotifs','reportRecipients','opsData'];
+      const cols = ['properties','bookings','expenses','chats','users','groups','platforms','internet','products','schedule','logs','profileRequests','majorCats','subCats','userNotifs','reportRecipients','opsData','customerMemos'];
       const results = await Promise.all(cols.map(c => API.list(c).catch(()=>null)));
       cols.forEach((c,i) => {
         const v = results[i];
         if (v === null) return;
-        if (['subCats','userNotifs','opsData'].includes(c)) {
+        if (['subCats','userNotifs','opsData','customerMemos'].includes(c)) {
           this[c] = (typeof v==='object' && !Array.isArray(v)) ? v : (this[c]||{});
         } else {
           this[c] = Array.isArray(v) ? v : (this[c]||[]);
@@ -285,5 +285,26 @@ class Store {
     this.products = this.products.filter(x => x.id != id);
   }
 }
+// 이미지 업로드 처리 (base64 변환)
+Store.prototype.uploadImage = async function(file) {
+  if (file.size > 10 * 1024 * 1024) throw new Error('파일 크기는 10MB 이하여야 합니다');
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+
+// 매니저 배정 시 알림 발송
+Store.prototype.notifyManagerAssignment = async function(propName, managerId, isNew=true) {
+  if (!managerId) return;
+  const mgr = this.user(managerId);
+  if (!mgr) return;
+  const action = isNew ? '신규 등록' : '정보 수정';
+  await this.notify(managerId, `🏠 [${propName}] 숙소가 회원님께 배정되었습니다 (${action})`, 'info');
+  await this.notifyAdmins(`📢 ${mgr.name}님에게 [${propName}] 매물이 배정되었습니다 (${action})`, 'info');
+};
 
 window.store = new Store();

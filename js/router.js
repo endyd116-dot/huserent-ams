@@ -279,10 +279,17 @@ class Router {
   showPropDetail(propId) {
     const p = store.prop(propId);
     const mgr = store.user(p.manager);
+    const images = p.images && p.images.length ? p.images : (p.image ? [p.image] : []);
+    const mainIdx = p.mainImage || 0;
+    const main = images[mainIdx] || images[0] || '';
+    
     openModal(`ℹ️ ${p.name}`, `
-      <img src="${p.image}" class="w-full h-72 object-cover rounded-2xl mb-6">
+      ${main?`<img src="${main}" class="w-full h-72 object-cover rounded-2xl mb-4">`:''}
+      ${images.length>1?`<div class="grid grid-cols-${Math.min(images.length,5)} gap-2 mb-6">${images.map((img,i)=>`<img src="${img}" class="w-full h-20 object-cover rounded-lg cursor-pointer ${i===mainIdx?'ring-2 ring-blue-500':''}" onclick="this.parentElement.previousElementSibling.src='${img}'">`).join('')}</div>`:'<div class="mb-6"></div>'}
       <p class="text-sm bg-slate-50 p-6 rounded-2xl mb-6">${p.description||'-'}</p>
-      <div class="grid grid-cols-2 gap-3 text-sm">${[['그룹',p.group],['주소',p.address],['1박',fmt(p.price)],['원가',fmt(p.cost)],['담당',mgr?.name||'-'],['수리',p.repair],['청소',p.cleaning],['가스',p.gas],['인터넷',p.internet],['분리수거',p.recycleDay],['비밀번호',p.password],['관리실',p.office],['이용안내',p.guide?`<a href="${p.guide}" target="_blank" class="text-blue-600">${p.guide}</a>`:'-']].map(([k,v])=>`<div class="bg-white p-4 rounded-xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${k}</p><p class="font-bold mt-1">${v||'-'}</p></div>`).join('')}</div>`, 'max-w-4xl');
+      <div class="grid grid-cols-2 gap-3 text-sm mb-4">${[['그룹',p.group],['주소',p.address],['1박',fmt(p.price)],['원가',fmt(p.cost)],['담당',mgr?.name||'-'],['수리',p.repair],['청소',p.cleaning],['가스',p.gas],['인터넷',p.internet],['분리수거',p.recycleDay],['비밀번호',p.password],['관리실',p.office],['이용안내',p.guide?`<a href="${p.guide}" target="_blank" class="text-blue-600">${p.guide}</a>`:'-']].map(([k,v])=>`<div class="bg-white p-4 rounded-xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${k}</p><p class="font-bold mt-1">${v||'-'}</p></div>`).join('')}</div>
+      ${p.customFields&&p.customFields.length?`<div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4"><p class="text-xs font-black text-amber-700 uppercase tracking-widest mb-3">📌 추가 운영 정보</p><div class="grid grid-cols-2 gap-2 text-sm">${p.customFields.map(cf=>`<div class="bg-white p-3 rounded-lg"><p class="text-[10px] font-black text-amber-600 uppercase">${cf.label}</p><p class="font-bold mt-1">${cf.value||'-'}</p></div>`).join('')}</div></div>`:''}
+    `, 'max-w-4xl');
   }
 
   showChatBox(propId) {
@@ -396,24 +403,39 @@ class Router {
   }
 
   showPropForm(pid=null) {
-    const p = pid?store.prop(pid):{id:'',name:'',group:store.groups[0]||'서울',location:'',address:'',price:100000,cost:40000,image:'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800',description:'',manager:'',repair:'완료',cleaning:'완료',gas:'도시가스',internet:'KT 기가',recycleDay:'',password:'',office:'',guide:''};
+    const p = pid?store.prop(pid):{id:'',name:'',group:store.groups[0]||'서울',location:'',address:'',price:100000,cost:40000,images:[],mainImage:0,description:'',manager:'',customFields:[],repair:'완료',cleaning:'완료',gas:'도시가스',internet:'KT 기가',recycleDay:'',password:'',office:'',guide:''};
+    // 기존 단일 image 호환
+    if (!p.images && p.image) p.images = [p.image];
+    if (!p.images) p.images = [];
+    if (!p.customFields) p.customFields = [];
+    
     openModal(pid?'✏️ 매물 수정':'🆕 매물 등록', `<form id="pf" class="space-y-4">
       <div class="grid grid-cols-2 gap-3">
         <input name="name" value="${p.name}" placeholder="숙소명" class="p-3 border rounded-xl font-bold" required>
         <select name="group" class="p-3 border rounded-xl font-bold">${store.groups.map(g=>`<option ${p.group===g?'selected':''}>${g}</option>`).join('')}</select>
       </div>
-      <input name="location" value="${p.location||''}" placeholder="위치 (간단)" class="w-full p-3 border rounded-xl font-bold" required>
-      <input name="address" value="${p.address||''}" placeholder="상세주소/링크" class="w-full p-3 border rounded-xl font-bold">
+      <input name="location" value="${p.location||''}" placeholder="위치" class="w-full p-3 border rounded-xl font-bold" required>
+      <input name="address" value="${p.address||''}" placeholder="상세주소" class="w-full p-3 border rounded-xl font-bold">
       <div class="grid grid-cols-2 gap-3">
         <div><label class="text-[10px] font-black text-blue-500">판매가 (1박)</label><input type="number" name="price" value="${p.price}" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1" required></div>
         <div><label class="text-[10px] font-black text-slate-400">원가</label><input type="number" name="cost" value="${p.cost}" class="w-full p-3 border rounded-xl font-black text-slate-500 mt-1" required></div>
       </div>
-      <input name="image" value="${p.image||''}" placeholder="이미지 URL" class="w-full p-3 border rounded-xl font-bold">
-      <textarea name="description" placeholder="세부사항 (HTML 가능)" class="w-full p-3 border rounded-xl h-24 font-bold">${p.description||''}</textarea>
+      
+      <!-- 이미지 다중 업로드 -->
+      <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+        <p class="text-xs font-black text-blue-700 uppercase tracking-widest mb-3">📷 이미지 업로드 (다중 선택, 각 10MB 이하)</p>
+        <input type="file" id="imgUpload" accept="image/*" multiple class="w-full p-3 border-2 border-dashed border-blue-300 rounded-xl bg-white font-bold text-sm cursor-pointer">
+        <p class="text-[10px] text-slate-500 font-bold mt-2">💡 별표(⭐) 클릭 시 대표 이미지로 설정</p>
+        <div id="imgPreview" class="grid grid-cols-4 gap-2 mt-3">${p.images.map((img,i)=>`<div class="relative group" data-idx="${i}"><img src="${img}" class="w-full h-24 object-cover rounded-lg border-2 ${p.mainImage===i?'border-amber-500 ring-2 ring-amber-200':'border-slate-200'}"><button type="button" onclick="router._setMainImage(${i})" class="absolute top-1 left-1 w-6 h-6 ${p.mainImage===i?'bg-amber-500':'bg-white/80'} rounded-full flex items-center justify-center text-xs">⭐</button><button type="button" onclick="router._removeImage(${i})" class="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs">×</button>${p.mainImage===i?'<span class="absolute bottom-1 left-1 right-1 text-[9px] font-black bg-amber-500 text-white px-1 py-0.5 rounded text-center">대표</span>':''}</div>`).join('')}</div>
+      </div>
+      
+      <textarea name="description" placeholder="세부사항" class="w-full p-3 border rounded-xl h-24 font-bold">${p.description||''}</textarea>
+      
+      <!-- 기본 운영정보 -->
       <div class="bg-slate-50 p-4 rounded-xl space-y-3">
-        <p class="text-xs font-black text-slate-400 uppercase tracking-widest">운영 정보</p>
+        <p class="text-xs font-black text-slate-400 uppercase tracking-widest">기본 운영 정보</p>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-[10px] font-black">담당매니저</label><select name="manager" class="w-full p-3 border rounded-xl font-bold mt-1"><option value="">-</option>${store.users.filter(u=>u.role==='Manager').map(u=>`<option value="${u.id}" ${p.manager===u.id?'selected':''}>${u.name}</option>`).join('')}</select></div>
+          <div><label class="text-[10px] font-black">담당매니저 🔔</label><select name="manager" class="w-full p-3 border rounded-xl font-bold mt-1"><option value="">-</option>${store.users.filter(u=>u.role==='Manager').map(u=>`<option value="${u.id}" ${p.manager===u.id?'selected':''}>${u.name}</option>`).join('')}</select></div>
           <div><label class="text-[10px] font-black">수리여부</label><input name="repair" value="${p.repair||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
           <div><label class="text-[10px] font-black">입주청소</label><input name="cleaning" value="${p.cleaning||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
           <div><label class="text-[10px] font-black">도시가스</label><input name="gas" value="${p.gas||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
@@ -424,16 +446,102 @@ class Router {
           <div class="col-span-2"><label class="text-[10px] font-black">이용안내 링크</label><input name="guide" value="${p.guide||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
         </div>
       </div>
+      
+      <!-- 커스텀 운영정보 -->
+      <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+        <div class="flex justify-between items-center mb-3">
+          <p class="text-xs font-black text-amber-700 uppercase tracking-widest">📌 추가 운영 정보 (사용자 정의)</p>
+          <button type="button" onclick="router._addCustomField()" class="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-black">+ 항목 추가</button>
+        </div>
+        <div id="customFields" class="space-y-2">${p.customFields.map((cf,i)=>`<div class="flex gap-2 items-center bg-white p-2 rounded-lg" data-cf-idx="${i}"><input value="${cf.label}" placeholder="항목명 (예: CCTV)" class="cf-label flex-1 p-2 border rounded-lg text-sm font-bold"><input value="${cf.value}" placeholder="내용" class="cf-value flex-1 p-2 border rounded-lg text-sm"><button type="button" onclick="router._removeCustomField(${i})" class="text-red-500 px-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')||'<p class="text-xs text-slate-400 text-center py-3">+ 항목 추가 버튼으로 사용자 정의 운영정보를 추가할 수 있습니다</p>'}</div>
+      </div>
+      
       <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest">${pid?'매물 수정':'매물 등록'}</button>
     </form>`, 'max-w-3xl');
+    
+    // 이미지 임시 저장 객체
+    this._tempImages = [...p.images];
+    this._tempMainImage = p.mainImage || 0;
+    this._tempCustomFields = [...p.customFields];
+    
+    // 이미지 업로드 핸들러
+    document.getElementById('imgUpload').onchange = async e => {
+      const files = [...e.target.files];
+      showLoading(true);
+      try {
+        for (const file of files) {
+          if (file.size > 10 * 1024 * 1024) {
+            toast(`${file.name}은 10MB를 초과합니다`, 'error');
+            continue;
+          }
+          const dataUrl = await store.uploadImage(file);
+          this._tempImages.push(dataUrl);
+        }
+        this._refreshImagePreview();
+        toast(`${files.length}개 이미지 추가됨`, 'success');
+      } catch(err) {
+        toast('업로드 실패: '+err.message, 'error');
+      } finally {
+        showLoading(false);
+        e.target.value = '';
+      }
+    };
+    
     document.getElementById('pf').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
+      // 이미지 정보
+      d.images = this._tempImages;
+      d.mainImage = this._tempMainImage;
+      d.image = this._tempImages[this._tempMainImage] || this._tempImages[0] || ''; // 기존 호환
+      // 커스텀 필드 수집
+      d.customFields = [...document.querySelectorAll('[data-cf-idx]')].map(el => ({
+        label: el.querySelector('.cf-label').value.trim(),
+        value: el.querySelector('.cf-value').value.trim()
+      })).filter(cf => cf.label);
+      
       if (pid) d.id = pid;
+      const oldManager = pid ? store.prop(pid)?.manager : null;
+      
       showLoading(true);
-      try { await store.upsertProp(d); toast(pid?'수정됨':'등록됨','success'); closeModal(); await this.renderAdminTab(); }
-      catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
+      try {
+        await store.upsertProp(d);
+        // 매니저 배정 알림
+        if (d.manager && d.manager !== oldManager) {
+          await store.notifyManagerAssignment(d.name, d.manager, !pid);
+        }
+        toast(pid?'수정됨 (매니저 알림 발송)':'등록됨 (매니저 알림 발송)','success');
+        closeModal();
+        await this.renderAdminTab();
+      } catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
     };
+    lucide.createIcons();
+  }
+  
+  _refreshImagePreview() {
+    const container = document.getElementById('imgPreview');
+    if (!container) return;
+    container.innerHTML = this._tempImages.map((img,i)=>`<div class="relative group"><img src="${img}" class="w-full h-24 object-cover rounded-lg border-2 ${this._tempMainImage===i?'border-amber-500 ring-2 ring-amber-200':'border-slate-200'}"><button type="button" onclick="router._setMainImage(${i})" class="absolute top-1 left-1 w-6 h-6 ${this._tempMainImage===i?'bg-amber-500':'bg-white/80'} rounded-full flex items-center justify-center text-xs">⭐</button><button type="button" onclick="router._removeImage(${i})" class="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs">×</button>${this._tempMainImage===i?'<span class="absolute bottom-1 left-1 right-1 text-[9px] font-black bg-amber-500 text-white px-1 py-0.5 rounded text-center">대표</span>':''}</div>`).join('');
+  }
+  _setMainImage(i) { this._tempMainImage = i; this._refreshImagePreview(); }
+  _removeImage(i) {
+    this._tempImages.splice(i,1);
+    if (this._tempMainImage >= this._tempImages.length) this._tempMainImage = 0;
+    this._refreshImagePreview();
+  }
+  _addCustomField() {
+    const container = document.getElementById('customFields');
+    const idx = container.querySelectorAll('[data-cf-idx]').length;
+    const div = document.createElement('div');
+    div.className = 'flex gap-2 items-center bg-white p-2 rounded-lg';
+    div.setAttribute('data-cf-idx', idx);
+    div.innerHTML = `<input placeholder="항목명 (예: CCTV)" class="cf-label flex-1 p-2 border rounded-lg text-sm font-bold"><input placeholder="내용" class="cf-value flex-1 p-2 border rounded-lg text-sm"><button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+    if (container.querySelector('p')) container.innerHTML = '';
+    container.appendChild(div);
+    lucide.createIcons();
+  }
+  _removeCustomField(i) {
+    document.querySelector(`[data-cf-idx="${i}"]`)?.remove();
   }
 
   async delProp(id) {
@@ -557,10 +665,198 @@ class Router {
 
   admExpenses(c) {
     const mode = this.expenseMode;
-    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">💳 지출 관리</h2><div class="flex gap-2"><div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.expenseMode='integrated';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='integrated'?'bg-white shadow':'text-slate-500'}">통합</button><button onclick="router.expenseMode='individual';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='individual'?'bg-white shadow':'text-slate-500'}">개별</button></div><button onclick="router.showCatMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 카테고리</button><button onclick="router.showExpenseForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 지출 추가</button></div></div>
-      <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700 flex items-center gap-2"><i data-lucide="link" class="w-4 h-4"></i>🔗 고정지출의 '인터넷비'는 기타관리와 자동 연동됩니다.</div>
-      <div id="exp-body"></div>`;
+    if (!this._expFilter) {
+      const now = new Date();
+      this._expFilter = { period: 'month', from: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, to: todayStr() };
+    }
+    const f = this._expFilter;
+    const periodLabel = { day: '일별', week: '주별', month: '월별', custom: '사용자 지정' }[f.period];
+    const titleLabel = f.period === 'month' ? `${f.from.slice(0,7).replace('-','년 ')}월 지출 내역` : `${f.from} ~ ${f.to} 지출 내역`;
+    
+    c.innerHTML = `<div class="flex justify-between items-center mb-4">
+      <h2 class="text-3xl font-black">💳 지출 관리</h2>
+      <div class="flex gap-2 flex-wrap">
+        <div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.expenseMode='integrated';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='integrated'?'bg-white shadow':'text-slate-500'}">통합</button><button onclick="router.expenseMode='individual';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='individual'?'bg-white shadow':'text-slate-500'}">개별</button></div>
+        <button onclick="router.showCatMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 카테고리</button>
+        <button onclick="router.exportExpensesExcel()" class="bg-green-600 text-white px-5 py-3 rounded-xl font-black text-sm">📥 엑셀 내보내기</button>
+        <label class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm cursor-pointer">📤 엑셀 불러오기<input type="file" id="expImport" accept=".xlsx,.xls" class="hidden"></label>
+        <button onclick="router.showExpenseForm()" class="bg-red-500 text-white px-5 py-3 rounded-xl font-black text-sm">+ 지출 추가</button>
+      </div>
+    </div>
+    
+    <div class="bg-white p-4 rounded-2xl border mb-4">
+      <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">📅 기간 필터</p>
+      <div class="flex gap-2 flex-wrap items-center">
+        <select id="expPeriod" class="p-3 border rounded-xl font-bold text-sm">
+          <option value="day" ${f.period==='day'?'selected':''}>일</option>
+          <option value="week" ${f.period==='week'?'selected':''}>주</option>
+          <option value="month" ${f.period==='month'?'selected':''}>월</option>
+          <option value="custom" ${f.period==='custom'?'selected':''}>특정 기간</option>
+        </select>
+        <input type="date" id="expFrom" value="${f.from}" class="p-3 border rounded-xl font-bold text-sm">
+        <span class="text-slate-400 font-black">~</span>
+        <input type="date" id="expTo" value="${f.to}" class="p-3 border rounded-xl font-bold text-sm">
+        <button onclick="router.applyExpFilter()" class="bg-slate-900 text-white px-5 py-3 rounded-xl font-black text-sm">적용</button>
+        <button onclick="router.expPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+        <button onclick="router.expNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+      </div>
+    </div>
+    
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700 flex items-center gap-2"><i data-lucide="link" class="w-4 h-4"></i>🔗 인터넷비는 기타관리와 자동 연동</div>
+    
+    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl mb-4 flex justify-between items-center">
+      <div>
+        <p class="text-xs font-black uppercase opacity-70">${periodLabel} 보기</p>
+        <h3 class="text-2xl font-black mt-1">📊 ${titleLabel}</h3>
+      </div>
+      <p class="text-3xl font-black text-amber-400">${fmt(this._getFilteredExpenses().reduce((s,e)=>s+e.amount,0))}</p>
+    </div>
+    
+    <div id="exp-body"></div>`;
+    
     if (mode === 'integrated') this.admExpIntegrated(); else this.admExpIndividual();
+    
+    document.getElementById('expImport').onchange = e => this.importExpensesExcel(e.target.files[0]);
+    lucide.createIcons();
+  }
+
+  _getFilteredExpenses() {
+    const f = this._expFilter || {};
+    return store.expenses.filter(e => {
+      if (!e.date) return false;
+      return e.date >= f.from && e.date <= f.to;
+    });
+  }
+
+  applyExpFilter() {
+    const period = document.getElementById('expPeriod').value;
+    let from = document.getElementById('expFrom').value;
+    let to = document.getElementById('expTo').value;
+    const now = new Date();
+    if (period === 'day') { from = to = todayStr(); }
+    else if (period === 'week') {
+      const d = new Date();
+      const day = d.getDay();
+      const diff = d.getDate() - day;
+      from = new Date(d.setDate(diff)).toISOString().split('T')[0];
+      to = new Date(d.setDate(diff+6)).toISOString().split('T')[0];
+    }
+    else if (period === 'month') {
+      const fd = new Date(from || todayStr());
+      from = `${fd.getFullYear()}-${String(fd.getMonth()+1).padStart(2,'0')}-01`;
+      const last = new Date(fd.getFullYear(), fd.getMonth()+1, 0);
+      to = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
+    }
+    this._expFilter = { period, from, to };
+    this.renderAdminTab();
+  }
+
+  expPrevMonth() {
+    const f = this._expFilter;
+    const d = new Date(f.from);
+    d.setMonth(d.getMonth() - 1);
+    f.from = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+    const last = new Date(d.getFullYear(), d.getMonth()+1, 0);
+    f.to = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
+    f.period = 'month';
+    this.renderAdminTab();
+  }
+
+  expNextMonth() {
+    const f = this._expFilter;
+    const d = new Date(f.from);
+    d.setMonth(d.getMonth() + 1);
+    f.from = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+    const last = new Date(d.getFullYear(), d.getMonth()+1, 0);
+    f.to = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
+    f.period = 'month';
+    this.renderAdminTab();
+  }
+
+  admExpIntegrated() {
+    const body = document.getElementById('exp-body');
+    const expenses = this._getFilteredExpenses();
+    let html = `<div class="bg-white rounded-2xl border overflow-x-auto"><table class="w-full min-w-[900px]"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">No.</th><th class="px-4 py-3 text-left">숙소</th>${store.majorCats.map(mc=>`<th class="px-4 py-3 text-right" colspan="${(store.subCats[mc]||[]).length+1}" style="background:${mc==='초기투자지출'?'#fef3c7':mc==='고정지출'?'#dbeafe':'#fee2e2'}">${mc}</th>`).join('')}<th class="px-4 py-3 text-right bg-slate-900 text-white">총합</th></tr><tr><th></th><th></th>${store.majorCats.map(mc=>(store.subCats[mc]||[]).map(sc=>`<th class="px-3 py-2 text-right text-[9px]">${sc}${sc==='인터넷비'?' 🔗':''}</th>`).join('')+`<th class="px-3 py-2 text-right text-[9px] font-black">소계</th>`).join('')}<th></th></tr></thead><tbody class="text-xs divide-y">`;
+    store.properties.forEach((p,idx)=>{
+      let total = 0;
+      html += `<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-black">${idx+1}</td><td class="px-4 py-3 font-black whitespace-nowrap">${p.name}</td>`;
+      store.majorCats.forEach(mc=>{
+        let mcSum = 0;
+        (store.subCats[mc]||[]).forEach(sc=>{
+          const v = expenses.filter(e=>e.propId===p.id&&e.majorCat===mc&&e.category===sc).reduce((s,e)=>s+e.amount,0);
+          mcSum += v;
+          html += `<td class="px-3 py-3 text-right font-bold ${sc==='인터넷비'&&v>0?'text-blue-600':''}">${v?fmt(v):'-'}</td>`;
+        });
+        html += `<td class="px-3 py-3 text-right font-black" style="background:${mc==='초기투자지출'?'#fef9e7':mc==='고정지출'?'#eff6ff':'#fef2f2'}">${mcSum?fmt(mcSum):'-'}</td>`;
+        total += mcSum;
+      });
+      html += `<td class="px-4 py-3 text-right font-black bg-slate-900 text-white">${fmt(total)}</td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+    body.innerHTML = html;
+  }
+
+  admExpIndividual() {
+    const body = document.getElementById('exp-body');
+    const expenses = this._getFilteredExpenses();
+    body.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>{
+      const list = expenses.filter(e=>e.propId===p.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+      const total = list.reduce((s,e)=>s+e.amount,0);
+      return `<div class="bg-white p-5 rounded-2xl border"><div class="flex items-center gap-3 mb-4 pb-4 border-b"><img src="${p.image||(p.images?.[p.mainImage||0])||''}" class="w-12 h-12 rounded-xl object-cover"><div class="flex-1 min-w-0"><p class="font-black truncate">${p.name}</p><p class="text-xs text-red-500 font-black">${fmt(total)}</p></div><button onclick="router.showExpenseForm(${p.id})" class="w-8 h-8 bg-blue-600 text-white rounded-lg text-xs font-black">+</button></div><div class="space-y-2 max-h-64 overflow-y-auto scrollbar">${list.length?list.map(e=>{const linked=e.syncKey?.startsWith('net_');return `<div class="p-2 ${linked?'bg-blue-50':'bg-slate-50'} rounded-lg flex items-center gap-2 text-xs"><div class="flex-1 min-w-0"><p class="font-black truncate">${e.category} ${linked?'🔗':''}</p><p class="text-[10px] text-slate-400 font-bold">${e.date} · ${e.memo||'-'}</p></div><span class="text-red-500 font-black">${fmt(e.amount)}</span><button onclick="router.delExpense(${e.id})" class="text-slate-300 hover:text-red-500"><i data-lucide="x" class="w-3 h-3"></i></button></div>`}).join(''):'<p class="text-xs text-slate-400 text-center py-4">기간 내 내역 없음</p>'}</div></div>`;
+    }).join('')}</div>`;
+    lucide.createIcons();
+  }
+
+  exportExpensesExcel() {
+    const expenses = this._getFilteredExpenses();
+    const f = this._expFilter;
+    const data = expenses.map(e => ({
+      '날짜': e.date,
+      '숙소': store.prop(e.propId)?.name || '-',
+      '대분류': e.majorCat,
+      '소분류': e.category,
+      '금액': e.amount,
+      '메모': e.memo || ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '지출내역');
+    const filename = `지출내역_${f.from}_${f.to}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast(`📥 ${filename} 다운로드 완료`, 'success');
+  }
+
+  async importExpensesExcel(file) {
+    if (!file) return;
+    if (!confirm('엑셀 파일의 지출 내역을 추가합니다. 계속하시겠습니까?')) return;
+    showLoading(true);
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      let added = 0, failed = 0;
+      for (const row of rows) {
+        const propName = row['숙소'];
+        const prop = store.properties.find(p => p.name === propName);
+        if (!prop) { failed++; continue; }
+        try {
+          await store.addExpense({
+            propId: prop.id,
+            majorCat: row['대분류'] || '변동지출',
+            category: row['소분류'] || '기타',
+            amount: +row['금액'] || 0,
+            date: row['날짜'] || todayStr(),
+            memo: row['메모'] || ''
+          });
+          added++;
+        } catch { failed++; }
+      }
+      toast(`✅ ${added}건 추가, ${failed}건 실패`, added ? 'success' : 'error');
+      await this.renderAdminTab();
+    } catch(e) {
+      toast('엑셀 읽기 실패: '+e.message, 'error');
+    } finally { showLoading(false); }
   }
 
   admExpIntegrated() {
@@ -639,32 +935,66 @@ class Router {
   }
 
   admBookings(c) {
-    const now = new Date();
-    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">📅 예약 관리</h2><div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.bkMode='month';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='month'?'bg-white shadow':'text-slate-500'}">월별 전체</button><button onclick="router.bkMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='list'?'bg-white shadow':'text-slate-500'}">개별 보기</button></div></div>
-      <div id="bk-body"></div>`;
+    if (!this._bkDate) this._bkDate = new Date();
+    const cur = this._bkDate;
+    const year = cur.getFullYear(), month = cur.getMonth();
+    
+    c.innerHTML = `<div class="flex justify-between items-center mb-6">
+      <h2 class="text-3xl font-black">📅 예약 관리</h2>
+      <div class="flex gap-2 items-center">
+        <button onclick="router.bkPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+        <h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3>
+        <button onclick="router.bkNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+        <button onclick="router.bkToday()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button>
+        <div class="bg-slate-100 rounded-xl p-1 flex ml-2">
+          <button onclick="router.bkMode='month';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='month'?'bg-white shadow':'text-slate-500'}">월별 전체</button>
+          <button onclick="router.bkMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='list'?'bg-white shadow':'text-slate-500'}">개별 보기</button>
+        </div>
+      </div>
+    </div>
+    <div id="bk-body"></div>`;
+    
     if (this.bkMode === 'list') {
-      document.getElementById('bk-body').innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>`<div class="bg-white p-4 rounded-2xl border"><h4 class="font-black mb-3">${p.name}</h4>${buildCalendar(now.getFullYear(),now.getMonth(),p.id,'router.onCalendarClick')}</div>`).join('')}</div>`;
+      document.getElementById('bk-body').innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>`<div class="bg-white p-4 rounded-2xl border"><h4 class="font-black mb-3">${p.name}</h4>${buildCalendar(year, month, p.id, 'router.onCalendarClick')}</div>`).join('')}</div>`;
     } else {
-      let html = `<div class="bg-white p-6 rounded-2xl border"><h3 class="text-xl font-black mb-4">${now.getFullYear()}년 ${now.getMonth()+1}월 전체 예약 현황</h3>`;
-      const first = new Date(now.getFullYear(), now.getMonth(), 1);
-      const days = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+      let html = `<div class="bg-white p-6 rounded-2xl border"><h3 class="text-xl font-black mb-4">${year}년 ${month+1}월 전체 예약 현황</h3>`;
+      const first = new Date(year, month, 1);
+      const days = new Date(year, month+1, 0).getDate();
       const startDow = first.getDay();
       html += `<div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">${['일','월','화','수','목','금','토'].map(d=>`<div class="text-center py-2">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">`;
       for (let i=0; i<startDow; i++) html += `<div class="min-h-[120px] bg-slate-50/50 rounded-lg"></div>`;
       for (let d=1; d<=days; d++) {
-        const ds = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const bks = store.bookings.filter(b => ds>=b.checkIn && ds<b.checkOut);
         html += `<div class="min-h-[120px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${bks.slice(0,4).map(b=>{const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 cursor-pointer" style="background:${pl?.color||'#2563eb'}20;color:${pl?.color||'#2563eb'}" onclick="router.showBookingForm(${b.propId},store.bookings.find(x=>x.id===${b.id}))">${store.prop(b.propId)?.name?.slice(0,6)||''}·${b.guest.slice(0,3)}</div>`}).join('')}${bks.length>4?`<div class="text-[8px] text-slate-400 font-bold mt-0.5">+${bks.length-4}건</div>`:''}</div>`;
       }
       html += `</div></div>`;
       document.getElementById('bk-body').innerHTML = html;
     }
+    lucide.createIcons();
   }
+
+  bkPrevMonth() { this._bkDate.setMonth(this._bkDate.getMonth()-1); this.renderAdminTab(); }
+  bkNextMonth() { this._bkDate.setMonth(this._bkDate.getMonth()+1); this.renderAdminTab(); }
+  bkToday() { this._bkDate = new Date(); this.renderAdminTab(); }
+
   admStats(c) {
     const rev = store.bookings.reduce((s,b)=>s+(+b.price||0),0);
-    const cost = store.expenses.reduce((s,e)=>s+(+e.amount||0),0);
+    const costAll = store.expenses.reduce((s,e)=>s+(+e.amount||0),0);
+    const costNoFixed = store.expenses.filter(e=>e.majorCat!=='고정지출').reduce((s,e)=>s+(+e.amount||0),0);
+    const cost = costNoFixed; // 고정비 제외 기본값
     c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">📊 통계 & 보고서</h2><button onclick="router.genReport()" class="bg-amber-500 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg">📝 AI 보고서 생성</button></div>
-      <div class="grid grid-cols-3 gap-4 mb-6"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총매출</p><p class="text-2xl font-black text-blue-600 mt-2">${fmt(rev)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총지출</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(cost)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">순이익</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-cost)}</p></div></div>
+            <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 mb-4 flex items-center justify-between">
+        <p class="text-sm font-black text-amber-700">💡 통계 기준: <b>고정지출 제외</b> (월세/관리비 등 매월 고정비용은 통계에서 제외됨)</p>
+        <button onclick="router._statsShowAll=!router._statsShowAll;router.renderAdminTab()" class="bg-amber-500 text-white px-4 py-2 rounded-lg font-black text-xs">${this._statsShowAll?'고정지출 포함 보기':'고정지출 포함 보기'}</button>
+      </div>
+      <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총매출</p><p class="text-2xl font-black text-blue-600 mt-2">${fmt(rev)}</p></div>
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${this._statsShowAll?'총지출 (전체)':'총지출 (고정비 제외)'}</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(this._statsShowAll?costAll:costNoFixed)}</p></div>
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">고정지출</p><p class="text-2xl font-black text-amber-600 mt-2">${fmt(costAll-costNoFixed)}</p></div>
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">순이익</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-(this._statsShowAll?costAll:costNoFixed))}</p></div>
+      </div>
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총매출</p><p class="text-2xl font-black text-blue-600 mt-2">${fmt(rev)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총지출</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(cost)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">순이익</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-cost)}</p></div></div>
       <div class="grid grid-cols-2 gap-4 mb-6"><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">숙소별 손익</h3><canvas id="c1" height="200"></canvas></div><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">지출 카테고리 분포</h3><canvas id="c2" height="200"></canvas></div></div>
       <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📧 정기 보고서 수신자</h3>
         <div class="flex flex-wrap gap-2 mb-3">${store.reportRecipients.map(r=>`<span class="inline-flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg text-xs font-bold">${store.user(r)?.name||r}<button onclick="router.delRecipient('${r}')" class="text-red-400">×</button></span>`).join('')}</div>
@@ -831,13 +1161,187 @@ class Router {
     };
   }
 
-  admCustomers(c) {
+    admCustomers(c) {
+    if (!store.customerMemos) store.customerMemos = {};
     const map = {};
-    store.bookings.forEach(b=>{const k=b.guest+'|'+b.contact;if(!map[k])map[k]={guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),last:''};map[k].n++;map[k].t+=b.price;map[k].plats.add(b.platform);if(b.checkIn>map[k].last)map[k].last=b.checkIn});
-    const list = Object.values(map).sort((a,b)=>b.t-a.t);
-    c.innerHTML = `<h2 class="text-3xl font-black mb-2">👥 고객 관리</h2><p class="text-slate-500 mb-6 font-medium">플랫폼별 예약 정보 기반 매출 분석</p>
-      <div class="grid grid-cols-4 gap-4 mb-6"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총 고객수</p><p class="text-2xl font-black mt-2">${list.length}명</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">재방문</p><p class="text-2xl font-black text-blue-600 mt-2">${list.filter(x=>x.n>1).length}명</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">평균객단가</p><p class="text-2xl font-black mt-2">${fmt(list.length?Math.round(list.reduce((s,x)=>s+x.t,0)/list.length):0)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">외국인</p><p class="text-2xl font-black mt-2">${list.filter(x=>x.nat!=='한국').length}명</p></div></div>
-      <div class="bg-white rounded-2xl border overflow-x-auto"><table class="w-full min-w-[1000px]"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['No.','예약자','연락처','국적','횟수','총매출','평균','플랫폼','최근'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${list.map((cu,i)=>`<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-black">${i+1}</td><td class="px-4 py-3 font-black">${cu.guest}</td><td class="px-4 py-3 font-mono text-xs">${cu.contact}</td><td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-black">${cu.nat||'-'}</span></td><td class="px-4 py-3 text-center font-black ${cu.n>1?'text-blue-600':''}">${cu.n}회 ${cu.n>1?'⭐':''}</td><td class="px-4 py-3 font-black text-blue-600">${fmt(cu.t)}</td><td class="px-4 py-3 font-bold">${fmt(Math.round(cu.t/cu.n))}</td><td class="px-4 py-3 text-xs font-bold">${[...cu.plats].join(', ')}</td><td class="px-4 py-3 text-xs font-bold text-slate-500">${cu.last}</td></tr>`).join('')}</tbody></table></div>`;
+    store.bookings.forEach(b=>{
+      const k = b.guest+'|'+b.contact;
+      if (!map[k]) map[k] = {
+        key: k, guest: b.guest, contact: b.contact, nat: b.nationality,
+        n: 0, t: 0, plats: new Set(), last: '', firstBk: b.checkIn,
+        bookings: []
+      };
+      map[k].n++; map[k].t += b.price;
+      map[k].plats.add(b.platform);
+      if (b.checkIn > map[k].last) map[k].last = b.checkIn;
+      map[k].bookings.push(b);
+    });
+    // 최근 예약순 정렬
+    const list = Object.values(map).sort((a,b) => (b.last || '').localeCompare(a.last || ''));
+    
+    // 플랫폼별 통계
+    const platStats = {};
+    store.platforms.forEach(p => platStats[p.name] = { count: 0, revenue: 0, color: p.color });
+    store.bookings.forEach(b => {
+      if (platStats[b.platform]) {
+        platStats[b.platform].count++;
+        platStats[b.platform].revenue += +b.price || 0;
+      }
+    });
+    const totalRev = Object.values(platStats).reduce((s,p)=>s+p.revenue,0);
+    
+    c.innerHTML = `<div class="flex justify-between items-center mb-6">
+      <div><h2 class="text-3xl font-black">👥 고객 관리</h2><p class="text-slate-500 font-medium mt-1">최근 예약순으로 정렬</p></div>
+      <button onclick="router.showPlatformMgr()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">🎯 플랫폼 관리</button>
+    </div>
+    
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총 고객수</p><p class="text-2xl font-black mt-2">${list.length}명</p></div>
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">재방문</p><p class="text-2xl font-black text-blue-600 mt-2">${list.filter(x=>x.n>1).length}명</p></div>
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">평균객단가</p><p class="text-2xl font-black mt-2">${fmt(list.length?Math.round(list.reduce((s,x)=>s+x.t,0)/list.length):0)}</p></div>
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">외국인</p><p class="text-2xl font-black mt-2">${list.filter(x=>x.nat!=='한국').length}명</p></div>
+    </div>
+    
+    <div class="bg-white rounded-2xl border overflow-hidden mb-6">
+      <div class="p-5 border-b bg-slate-50 flex justify-between items-center"><h3 class="font-black text-sm uppercase tracking-widest">고객 리스트 (최신 예약순)</h3><span class="text-xs text-slate-400 font-bold">💡 행 클릭 시 상세/메모</span></div>
+      <div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['No.','예약자','연락처','국적','예약횟수','총매출','평균','플랫폼','최근예약','메모'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead>
+      <tbody class="text-sm divide-y">${list.map((cu,i)=>{
+        const memo = store.customerMemos[cu.key]?.memo || '';
+        return `<tr class="hover:bg-blue-50/30 cursor-pointer" onclick="router.showCustomerDetail('${cu.key}')">
+          <td class="px-4 py-3 font-black">${i+1}</td>
+          <td class="px-4 py-3 font-black">${cu.guest}</td>
+          <td class="px-4 py-3 font-mono text-xs">${cu.contact}</td>
+          <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-black">${cu.nat||'-'}</span></td>
+          <td class="px-4 py-3 text-center font-black ${cu.n>1?'text-blue-600':''}">${cu.n}회 ${cu.n>1?'⭐':''}</td>
+          <td class="px-4 py-3 font-black text-blue-600">${fmt(cu.t)}</td>
+          <td class="px-4 py-3 font-bold">${fmt(Math.round(cu.t/cu.n))}</td>
+          <td class="px-4 py-3 text-xs font-bold">${[...cu.plats].join(', ')}</td>
+          <td class="px-4 py-3 text-xs font-bold text-slate-500">${cu.last}</td>
+          <td class="px-4 py-3 text-xs ${memo?'text-amber-600 font-bold':'text-slate-300'}">${memo?'📝 '+memo.slice(0,15)+(memo.length>15?'...':''):'-'}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>
+    </div>
+    
+    <div class="bg-white rounded-2xl border p-6">
+      <h3 class="font-black text-lg mb-4 flex items-center gap-2">🎯 플랫폼별 매출 통계</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        ${Object.entries(platStats).map(([name,s])=>{
+          const pct = totalRev?Math.round(s.revenue/totalRev*100):0;
+          return `<div class="bg-slate-50 p-4 rounded-2xl border-l-4" style="border-color:${s.color}">
+            <div class="flex justify-between items-start mb-2"><span class="font-black text-sm" style="color:${s.color}">${name}</span><span class="text-[10px] font-black bg-white px-2 py-0.5 rounded-full">${pct}%</span></div>
+            <p class="text-2xl font-black text-slate-800 mt-1">${fmt(s.revenue)}</p>
+            <p class="text-xs text-slate-500 font-bold mt-1">${s.count}건 예약 · 평균 ${fmt(s.count?Math.round(s.revenue/s.count):0)}</p>
+            <div class="w-full bg-slate-200 rounded-full h-2 mt-3"><div class="h-2 rounded-full" style="width:${pct}%;background:${s.color}"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+      <canvas id="platChart" height="80"></canvas>
+    </div>`;
+    
+    setTimeout(()=>{
+      const labels = Object.keys(platStats);
+      const data = labels.map(l=>platStats[l].revenue);
+      const colors = labels.map(l=>platStats[l].color);
+      new Chart(document.getElementById('platChart'),{type:'bar',data:{labels,datasets:[{label:'플랫폼별 매출',data,backgroundColor:colors}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+    },100);
+    lucide.createIcons();
+  }
+
+  showCustomerDetail(key) {
+    const map = {};
+    store.bookings.forEach(b=>{const k=b.guest+'|'+b.contact;if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),bookings:[]};map[k].n++;map[k].t+=b.price;map[k].plats.add(b.platform);map[k].bookings.push(b)});
+    const cu = map[key];
+    if (!cu) return;
+    if (!store.customerMemos) store.customerMemos = {};
+    const cmemo = store.customerMemos[key] || { name: cu.guest, contact: cu.contact, nat: cu.nat, memo: '' };
+    
+    openModal(`👤 ${cu.guest}님 정보`, `
+      <form id="custForm" class="space-y-4">
+        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl">
+          <p class="text-xs font-black uppercase opacity-70">고객 통계</p>
+          <p class="text-3xl font-black mt-2">${cu.guest}</p>
+          <div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20">
+            <div><p class="text-[10px] font-black opacity-70 uppercase">예약횟수</p><p class="text-2xl font-black">${cu.n}회</p></div>
+            <div><p class="text-[10px] font-black opacity-70 uppercase">총매출</p><p class="text-xl font-black">${fmt(cu.t)}</p></div>
+            <div><p class="text-[10px] font-black opacity-70 uppercase">평균객단가</p><p class="text-xl font-black">${fmt(Math.round(cu.t/cu.n))}</p></div>
+          </div>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-[10px] font-black text-slate-400 uppercase">이름</label><input name="name" value="${cmemo.name}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase">연락처</label><input name="contact" value="${cmemo.contact}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
+        </div>
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">국적</label><input name="nat" value="${cmemo.nat||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
+        <div><label class="text-[10px] font-black text-amber-600 uppercase">📝 고객 메모 (특이사항, VIP 표시 등)</label><textarea name="memo" placeholder="예: VIP 고객 / 알러지 정보 / 선호 사항..." class="w-full p-3 border-2 border-amber-200 rounded-xl font-bold mt-1 h-32 bg-amber-50">${cmemo.memo||''}</textarea></div>
+        
+        <div class="bg-slate-50 p-4 rounded-xl">
+          <p class="text-[10px] font-black text-slate-500 uppercase mb-3">📅 예약 이력 (${cu.bookings.length}건)</p>
+          <div class="space-y-2 max-h-40 overflow-y-auto scrollbar">${cu.bookings.sort((a,b)=>b.checkIn.localeCompare(a.checkIn)).map(b=>{const p=store.prop(b.propId);const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="bg-white p-2 rounded-lg flex justify-between text-xs"><div><b>${p?.name||'-'}</b> · <span style="color:${pl?.color||'#666'}">${b.platform}</span></div><div><span class="text-slate-500">${b.checkIn}~${b.checkOut}</span> <b class="text-blue-600">${fmt(b.price)}</b></div></div>`}).join('')}</div>
+        </div>
+        
+        <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 정보 저장</button>
+      </form>
+    `, 'max-w-3xl');
+    
+    document.getElementById('custForm').onsubmit = async e => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(e.target));
+      store.customerMemos[key] = d;
+      await API.setAll('customerMemos', store.customerMemos).catch(()=>{
+        // customerMemos 컬렉션이 없으면 직접 저장
+      });
+      toast('고객 정보 저장됨', 'success');
+      closeModal();
+      await this.renderAdminTab();
+    };
+  }
+
+  showPlatformMgr() {
+    openModal('🎯 예약 플랫폼 관리', `
+      <div class="space-y-2 mb-4">${store.platforms.map((p,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl">
+        <span class="w-8 h-8 rounded-lg" style="background:${p.color}"></span>
+        <input value="${p.name}" data-pn="${i}" class="flex-1 p-2 border rounded-lg font-bold">
+        <input type="color" value="${p.color}" data-pc="${i}" class="w-12 h-10 border rounded-lg cursor-pointer">
+        <button onclick="router.savePlatform(${i})" class="text-blue-500"><i data-lucide="check" class="w-4 h-4"></i></button>
+        <button onclick="router.delPlatform(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+      </div>`).join('')}</div>
+      <form id="platForm" class="bg-blue-50 p-4 rounded-xl">
+        <p class="text-xs font-black text-blue-600 uppercase mb-3">+ 신규 플랫폼 추가</p>
+        <div class="flex gap-2">
+          <input name="name" placeholder="플랫폼명" class="flex-1 p-3 border rounded-xl font-bold" required>
+          <input type="color" name="color" value="#2563eb" class="w-16 h-12 border rounded-xl cursor-pointer">
+          <button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button>
+        </div>
+      </form>
+    `);
+    document.getElementById('platForm').onsubmit = async e => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(e.target));
+      if (store.platforms.find(p=>p.name===d.name)) { toast('이미 존재','error'); return; }
+      store.platforms.push({ name: d.name, color: d.color });
+      await API.setAll('platforms', store.platforms);
+      this.showPlatformMgr();
+      await this.renderAdminTab();
+      toast('추가됨', 'success');
+    };
+    lucide.createIcons();
+  }
+  async savePlatform(i) {
+    const name = document.querySelector(`[data-pn="${i}"]`).value.trim();
+    const color = document.querySelector(`[data-pc="${i}"]`).value;
+    if (!name) return;
+    store.platforms[i] = { name, color };
+    await API.setAll('platforms', store.platforms);
+    toast('수정됨', 'success');
+    await this.renderAdminTab();
+  }
+  async delPlatform(i) {
+    if (!confirm('삭제?')) return;
+    store.platforms.splice(i,1);
+    await API.setAll('platforms', store.platforms);
+    this.showPlatformMgr();
+    await this.renderAdminTab();
+    toast('삭제됨', 'success');
   }
 
   admUsers(c) {
