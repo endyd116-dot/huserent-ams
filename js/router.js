@@ -6,8 +6,12 @@ class Router {
     this.bkMode = 'month';
     this.staffMode = 'cal';
     this.admChatsMode = 'list';
+    this._statsShowAll = false;
+    this._bkDate = new Date();
+    this._staffDate = new Date();
+    this._mySchedDate = new Date();
   }
-
+  
   init() {
     const hash = location.hash.replace('#','');
     if (hash.startsWith('chat/')) {
@@ -18,40 +22,18 @@ class Router {
     if (!store.currentUser) this.renderLogin();
     else this.go('home');
   }
-
+  
   async go(r, p={}) {
-    const fn = {home:this.renderHome, admin:this.renderAdmin, chat:this.renderChat}[r];
+    const fn = {home:this.renderHome, admin:this.renderAdmin, chat:this.renderChat, mySchedule:this.renderMySchedule}[r];
     if (fn) await fn.call(this, p);
     lucide.createIcons();
     window.scrollTo(0,0);
   }
-
-  async logout() {
-    await store.logout();
-    location.hash = '';
-    this.renderLogin();
-  }
+  
+  async logout() { await store.logout(); location.hash=''; this.renderLogin(); }
 
   renderLogin() {
-    document.getElementById('app-root').innerHTML = `
-      <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-6">
-        <div class="w-full max-w-md bg-white rounded-3xl p-10 shadow-2xl fade-in">
-          <div class="text-center mb-8">
-            <div class="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-5"><i data-lucide="building-2" class="text-white w-10 h-10"></i></div>
-            <h2 class="text-3xl font-black">QJ-PropMS</h2>
-            <p class="text-slate-400 text-sm mt-2 font-medium">하이브리드 단기렌트 통합 관리</p>
-          </div>
-          <form id="login-form" class="space-y-4">
-            <input type="text" id="uid" placeholder="ID" class="w-full px-5 py-4 rounded-2xl border focus:ring-4 focus:ring-blue-100 outline-none font-bold text-sm">
-            <input type="password" id="upw" placeholder="Password" class="w-full px-5 py-4 rounded-2xl border focus:ring-4 focus:ring-blue-100 outline-none font-bold text-sm">
-            <button type="submit" id="login-btn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black hover:bg-blue-600 transition shadow-lg uppercase tracking-widest text-sm">Access System</button>
-          </form>
-          <div class="mt-6 p-4 bg-blue-50 rounded-2xl text-[11px] text-blue-700 font-bold">
-            <p class="mb-2">🔑 테스트 계정 (PW: 1234)</p>
-            <p>admin / manager1 / manager2 / staff1</p>
-          </div>
-        </div>
-      </div>`;
+    document.getElementById('app-root').innerHTML = `<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-6"><div class="w-full max-w-md bg-white rounded-3xl p-10 shadow-2xl fade-in"><div class="text-center mb-8"><div class="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-5"><i data-lucide="building-2" class="text-white w-10 h-10"></i></div><h2 class="text-3xl font-black">QJ-PropMS</h2><p class="text-slate-400 text-sm mt-2 font-medium">하이브리드 단기렌트 통합 관리 v3.0 + AI</p></div><form id="login-form" class="space-y-4"><input type="text" id="uid" placeholder="ID" class="w-full px-5 py-4 rounded-2xl border focus:ring-4 focus:ring-blue-100 outline-none font-bold text-sm"><input type="password" id="upw" placeholder="Password" class="w-full px-5 py-4 rounded-2xl border focus:ring-4 focus:ring-blue-100 outline-none font-bold text-sm"><button type="submit" id="login-btn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black hover:bg-blue-600 transition shadow-lg uppercase tracking-widest text-sm">Access System</button></form><div class="mt-6 p-4 bg-blue-50 rounded-2xl text-[11px] text-blue-700 font-bold"><p class="mb-2">🔑 테스트 계정 (PW: 1234)</p><p>admin / manager1 / manager2 / staff1</p></div></div></div>`;
     document.getElementById('login-form').onsubmit = async e => {
       e.preventDefault();
       const id = document.getElementById('uid').value.trim();
@@ -63,50 +45,49 @@ class Router {
         if (this.pendingChat) { const p = this.pendingChat; this.pendingChat = null; this.go('chat',{id:p}); return; }
         await this.go('home');
         toast(`환영합니다, ${store.currentUser.name}`, 'success');
-      } else {
-        toast('로그인 실패', 'error');
-        btn.disabled = false; btn.textContent = 'Access System';
-      }
+      } else { toast('로그인 실패', 'error'); btn.disabled = false; btn.textContent = 'Access System'; }
     };
     lucide.createIcons();
   }
 
+  // ===== 알림 (클릭 시 해당 화면 이동) =====
   async showNotifications() {
     const list = store.getMyNotifs();
     const ic = {info:'info',success:'check-circle',warning:'alert-triangle',error:'x-circle'};
     const cl = {info:'text-blue-500 bg-blue-50',success:'text-green-500 bg-green-50',warning:'text-amber-500 bg-amber-50',error:'text-red-500 bg-red-50'};
-    openModal('🔔 알림 전체보기', `
+    openModal('🔔 내 알람 통합 보기', `
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700">💡 알림 클릭 시 해당 화면으로 자동 이동합니다</div>
       <div class="mb-4 flex justify-between items-center">
         <div><p class="text-sm font-black">${store.currentUser.name}님의 알림</p><p class="text-xs text-slate-400 mt-0.5">총 ${list.length}건 · 읽지않음 ${store.getMyUnreadCount()}건</p></div>
         ${list.length?`<button onclick="(async()=>{await store.markAllRead();router.showNotifications()})()" class="text-xs text-blue-600 font-black">모두 읽음</button>`:''}
       </div>
       <div class="space-y-2 max-h-[60vh] overflow-y-auto scrollbar">
-        ${list.length?list.map(n=>`<div class="p-4 ${n.read?'bg-slate-50':'bg-white border-l-4 border-blue-500 shadow-sm'} rounded-xl flex items-start gap-3"><div class="w-9 h-9 rounded-lg flex items-center justify-center ${cl[n.type]||cl.info}"><i data-lucide="${ic[n.type]||'bell'}" class="w-4 h-4"></i></div><div class="flex-1"><p class="text-sm ${n.read?'font-medium text-slate-500':'font-bold'}">${n.message}</p><p class="text-[10px] text-slate-400 font-bold mt-1">${n.time}</p></div></div>`).join(''):'<div class="py-16 text-center text-slate-400"><i data-lucide="bell-off" class="w-12 h-12 mx-auto mb-3 text-slate-200"></i><p class="font-bold">알림이 없습니다</p></div>'}
+        ${list.length?list.map((n,i)=>`<div onclick='router.handleNotifClick(${i})' class="p-4 ${n.read?'bg-slate-50':'bg-white border-l-4 border-blue-500 shadow-sm'} rounded-xl flex items-start gap-3 cursor-pointer hover:bg-blue-50 transition"><div class="w-9 h-9 rounded-lg flex items-center justify-center ${cl[n.type]||cl.info}"><i data-lucide="${ic[n.type]||'bell'}" class="w-4 h-4"></i></div><div class="flex-1"><p class="text-sm ${n.read?'font-medium text-slate-500':'font-bold'}">${n.message}</p><p class="text-[10px] text-slate-400 font-bold mt-1">${n.time}${n.link?' · 클릭하여 이동 →':''}</p></div></div>`).join(''):'<div class="py-16 text-center text-slate-400"><i data-lucide="bell-off" class="w-12 h-12 mx-auto mb-3 text-slate-200"></i><p class="font-bold">알림이 없습니다</p></div>'}
       </div>`, 'max-w-2xl');
     setTimeout(async()=>{ await store.markAllRead(); }, 1500);
+  }
+  
+  async handleNotifClick(idx) {
+    const list = store.getMyNotifs();
+    const n = list[idx];
+    if (!n || !n.link) return;
+    closeModal();
+    const link = n.link;
+    if (link.type === 'home') await this.go('home');
+    else if (link.type === 'detail') { await this.go('home'); setTimeout(()=>this.showPropActions(link.propId),200); }
+    else if (link.type === 'chat') { await this.go('home'); setTimeout(()=>this.showChatBox(link.propId),200); }
+    else if (link.type === 'schedule') await this.go('mySchedule');
+    else if (link.type === 'admin' && store.currentUser.role==='Admin') {
+      this.adminTab = link.tab || 'main';
+      await this.go('admin');
+    }
   }
 
   showMyProfile() {
     const u = store.currentUser;
     const myReqs = store.profileRequests.filter(r => r.userId === u.id).slice(0,5);
     const pending = myReqs.find(r => r.status === 'pending');
-    openModal(`👤 내 정보 - ${u.name}`, `
-      <div class="space-y-6">
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl flex items-center gap-4">
-          <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black bg-white/20">${u.name.charAt(0)}</div>
-          <div class="flex-1"><p class="text-[10px] font-black uppercase opacity-70">현재 정보</p><p class="text-xl font-black mt-1">${u.name}</p><p class="text-xs font-bold opacity-80 mt-1">${u.role} · ${u.id}</p></div>
-        </div>
-        ${pending?`<div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 flex items-center gap-3"><i data-lucide="clock" class="w-5 h-5 text-amber-600"></i><div><p class="text-sm font-black text-amber-800">변경 요청 승인 대기 중</p></div></div>`:''}
-        <form id="profile-form" class="space-y-4">
-          <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs font-bold text-blue-700">정보 변경 시 관리자 승인 후 적용됩니다.</div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">아이디 (변경불가)</label><input value="${u.id}" disabled class="w-full p-3 border rounded-xl font-bold mt-1 bg-slate-100 text-slate-400"></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">이름</label><input type="text" name="name" value="${u.name}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">핸드폰번호</label><input type="text" name="contact" value="${u.contact||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">이메일</label><input type="email" name="email" value="${u.email||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">새 비밀번호</label><input type="password" name="pw" placeholder="비워두면 유지" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <button type="submit" ${pending?'disabled':''} class="w-full ${pending?'bg-slate-300':'bg-slate-900 hover:bg-blue-600'} text-white py-4 rounded-xl font-black uppercase">${pending?'⏳ 처리 대기 중':'📝 변경 요청'}</button>
-        </form>
-      </div>`, 'max-w-2xl');
+    openModal(`👤 내 정보 - ${u.name}`, `<div class="space-y-6"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl flex items-center gap-4"><div class="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black bg-white/20">${u.name.charAt(0)}</div><div class="flex-1"><p class="text-[10px] font-black uppercase opacity-70">현재 정보</p><p class="text-xl font-black mt-1">${u.name}</p><p class="text-xs font-bold opacity-80 mt-1">${u.role} · ${u.id}</p></div></div>${pending?`<div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 flex items-center gap-3"><i data-lucide="clock" class="w-5 h-5 text-amber-600"></i><div><p class="text-sm font-black text-amber-800">변경 요청 승인 대기 중</p></div></div>`:''}<form id="profile-form" class="space-y-4"><div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs font-bold text-blue-700">정보 변경 시 관리자 승인 후 적용됩니다.</div><div><label class="text-[10px] font-black text-slate-400 uppercase">아이디 (변경불가)</label><input value="${u.id}" disabled class="w-full p-3 border rounded-xl font-bold mt-1 bg-slate-100 text-slate-400"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">이름</label><input type="text" name="name" value="${u.name}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div><div><label class="text-[10px] font-black text-slate-400 uppercase">핸드폰번호</label><input type="text" name="contact" value="${u.contact||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">이메일</label><input type="email" name="email" value="${u.email||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">새 비밀번호</label><input type="password" name="pw" placeholder="비워두면 유지" class="w-full p-3 border rounded-xl font-bold mt-1"></div><button type="submit" ${pending?'disabled':''} class="w-full ${pending?'bg-slate-300':'bg-slate-900 hover:bg-blue-600'} text-white py-4 rounded-xl font-black uppercase">${pending?'⏳ 처리 대기 중':'📝 변경 요청'}</button></form></div>`, 'max-w-2xl');
     if (!pending) {
       document.getElementById('profile-form').onsubmit = async e => {
         e.preventDefault();
@@ -136,40 +117,70 @@ class Router {
     };
     const grouped = {};
     props.forEach(p => { const g=p.group||'기타'; if(!grouped[g])grouped[g]=[]; grouped[g].push(p); });
-    document.getElementById('app-root').innerHTML = `
-      <div class="flex min-h-screen">${UI.Sidebar('home')}
-        <main class="flex-1 bg-slate-50 min-h-screen">${UI.Header('대시보드')}
-          <div class="p-8 max-w-[1600px] mx-auto">
-            <div class="flex justify-between items-end mb-8">
-              <div><h2 class="text-3xl font-black">안녕하세요, ${u.name.replace(/\(.*\)/,'')} 👋</h2><p class="text-slate-500 font-medium mt-1">오늘 ${t} · ${props.length}개 숙소</p></div>
-              ${u.role==='Admin'?`<button onclick="router.go('admin')" class="bg-amber-500 text-white px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4"></i>관리자 오피스</button>`:''}
-            </div>
-            <div class="grid grid-cols-3 gap-4 mb-8">
-              <div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">투숙중</p><p class="text-3xl font-black text-blue-600 mt-2">${stats.occupied}</p></div>
-              <div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">공실</p><p class="text-3xl font-black text-green-500 mt-2">${stats.empty}</p></div>
-              <div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">청소중</p><p class="text-3xl font-black text-amber-500 mt-2">${stats.cleaning}</p></div>
-            </div>
-            ${Object.entries(grouped).map(([g,list])=>`<div class="mb-10"><h3 class="text-lg font-black mb-4 flex items-center gap-2"><span class="w-1.5 h-6 bg-blue-600 rounded-full"></span>${g} <span class="text-xs text-slate-400 font-bold">(${list.length})</span></h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">${list.map(p=>UI.PropertyCard(p,true)).join('')}</div></div>`).join('')}
-          </div>
-        </main>
-      </div>`;
+    const upcomingSched = store.schedule.filter(s => s.staff===u.name && s.date>=t).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,3);
+    const unread = store.getMyUnreadCount();
+    
+    document.getElementById('app-root').innerHTML = `<div class="flex min-h-screen">${UI.Sidebar('home')}<main class="flex-1 bg-slate-50 min-h-screen">${UI.Header('대시보드')}<div class="p-8 max-w-[1600px] mx-auto"><div class="flex justify-between items-end mb-8"><div><h2 class="text-3xl font-black">안녕하세요, ${u.name.replace(/\(.*\)/,'')} 👋</h2><p class="text-slate-500 font-medium mt-1">오늘 ${t} · ${props.length}개 숙소</p></div><div class="flex gap-2">${unread?`<button onclick="router.showNotifications()" class="bg-red-500 text-white px-5 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><i data-lucide="bell" class="w-4 h-4"></i>알림 ${unread}건</button>`:''}<button onclick="router.go('mySchedule')" class="bg-purple-600 text-white px-5 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><i data-lucide="calendar" class="w-4 h-4"></i>내 스케줄</button>${u.role==='Admin'?`<button onclick="router.go('admin')" class="bg-amber-500 text-white px-6 py-3 rounded-2xl font-black shadow-lg flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4"></i>관리자</button>`:''}</div></div>${upcomingSched.length?`<div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-5 rounded-2xl mb-6 cursor-pointer hover:shadow-xl transition" onclick="router.go('mySchedule')"><div class="flex items-center justify-between mb-3"><h3 class="font-black flex items-center gap-2"><i data-lucide="calendar-clock" class="w-5 h-5"></i>다가오는 내 스케줄 (${upcomingSched.length}건)</h3><span class="text-xs opacity-80 font-bold">전체보기 →</span></div><div class="space-y-2">${upcomingSched.map(s=>`<div class="bg-white/10 rounded-xl p-3 flex justify-between"><div><p class="text-sm font-black">${s.task}</p><p class="text-[10px] opacity-70">${store.prop(s.propId)?.name||'-'}</p></div><div class="text-right"><p class="text-sm font-black">${s.date}</p><p class="text-[10px] opacity-80">${s.time}</p></div></div>`).join('')}</div></div>`:''}<div class="grid grid-cols-3 gap-4 mb-8"><div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">투숙중</p><p class="text-3xl font-black text-blue-600 mt-2">${stats.occupied}</p></div><div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">공실</p><p class="text-3xl font-black text-green-500 mt-2">${stats.empty}</p></div><div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">청소중</p><p class="text-3xl font-black text-amber-500 mt-2">${stats.cleaning}</p></div></div>${Object.entries(grouped).map(([g,list])=>`<div class="mb-10"><h3 class="text-lg font-black mb-4 flex items-center gap-2"><span class="w-1.5 h-6 bg-blue-600 rounded-full"></span>${g} <span class="text-xs text-slate-400 font-bold">(${list.length})</span></h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">${list.map(p=>UI.PropertyCard(p,true)).join('')}</div></div>`).join('')}</div></main></div>`;
     lucide.createIcons();
   }
+  // ===== 내 스케줄 (모든 사용자가 본인 스케줄 관리) =====
+  async renderMySchedule() {
+    const u = store.currentUser;
+    const cur = this._mySchedDate;
+    const year = cur.getFullYear(), month = cur.getMonth();
+    const myList = store.schedule.filter(s => s.staff === u.name).sort((a,b)=>a.date.localeCompare(b.date));
+    const monthList = myList.filter(s => s.date.startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
+    
+    document.getElementById('app-root').innerHTML = `<div class="flex min-h-screen">${UI.Sidebar('mySchedule')}<main class="flex-1 bg-slate-50 min-h-screen">${UI.Header('내 스케줄')}<div class="p-8 max-w-[1600px] mx-auto"><div class="flex justify-between items-center mb-6 flex-wrap gap-3"><div><h2 class="text-3xl font-black">📅 내 스케줄</h2><p class="text-slate-500 mt-1">관리자 배정 + 본인 등록 통합 관리 (양방향 알림 연동)</p></div><div class="flex gap-2 items-center"><button onclick="router._mySchedDate.setMonth(router._mySchedDate.getMonth()-1);router.go('mySchedule')" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router._mySchedDate.setMonth(router._mySchedDate.getMonth()+1);router.go('mySchedule')" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button onclick="router._mySchedDate=new Date();router.go('mySchedule')" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button><button onclick="router.showMyScheduleForm()" class="bg-purple-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄 등록</button></div></div>
+    <div class="grid grid-cols-3 gap-4 mb-6"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">이번달</p><p class="text-2xl font-black text-purple-600 mt-2">${monthList.length}건</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">전체 예정</p><p class="text-2xl font-black text-blue-600 mt-2">${myList.filter(s=>s.date>=todayStr()).length}건</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">오늘</p><p class="text-2xl font-black text-amber-500 mt-2">${myList.filter(s=>s.date===todayStr()).length}건</p></div></div>
+    <div class="bg-white p-6 rounded-2xl border mb-6"><h3 class="text-xl font-black mb-4">📆 캘린더 보기</h3>${this._buildScheduleCalendar(year,month,myList)}</div>
+    <div class="bg-white rounded-2xl border overflow-hidden"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">📋 ${year}년 ${month+1}월 스케줄 리스트</h3></div><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">일시</th><th class="px-4 py-3 text-left">숙소</th><th class="px-4 py-3 text-left">업무</th><th class="px-4 py-3 text-left">알람</th><th class="px-4 py-3 text-left">메모</th><th class="px-4 py-3 text-left">등록자</th><th class="px-4 py-3"></th></tr></thead><tbody class="text-sm divide-y">${monthList.length?monthList.map(s=>{const isMine=s.createdBy===u.id;return `<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-black">${s.date} ${s.time}</td><td class="px-4 py-3 text-xs">${store.prop(s.propId)?.name||'-'}</td><td class="px-4 py-3">${s.task}</td><td class="px-4 py-3 text-xs">${(s.alarm||[]).map(a=>a+'분').join(', ')||'없음'}</td><td class="px-4 py-3 text-xs text-slate-500">${s.memo||'-'}</td><td class="px-4 py-3 text-xs"><span class="px-2 py-0.5 ${isMine?'bg-purple-100 text-purple-700':'bg-amber-100 text-amber-700'} rounded font-black">${isMine?'본인':'관리자배정'}</span></td><td class="px-4 py-3">${(isMine||u.role==='Admin')?`<button onclick="router.delMySched(${s.id})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`:''}</td></tr>`}).join(''):'<tr><td colspan="7" class="text-center py-8 text-slate-400 font-bold">이번 달 스케줄이 없습니다</td></tr>'}</tbody></table></div></div></main></div>`;
+    lucide.createIcons();
+  }
+  
+  _buildScheduleCalendar(year, month, schedList) {
+    const first = new Date(year, month, 1);
+    const days = new Date(year, month+1, 0).getDate();
+    const startDow = first.getDay();
+    let html = `<div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">${['일','월','화','수','목','금','토'].map(d=>`<div class="text-center py-2">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">`;
+    for (let i=0; i<startDow; i++) html += `<div class="min-h-[100px] bg-slate-50/50 rounded-lg"></div>`;
+    for (let d=1; d<=days; d++) {
+      const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const sch = schedList.filter(s => s.date === ds);
+      html += `<div class="min-h-[100px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${sch.slice(0,3).map(s=>`<div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 bg-purple-100 text-purple-700">${s.time} ${s.task}</div>`).join('')}${sch.length>3?`<div class="text-[8px] text-slate-400 mt-0.5">+${sch.length-3}건</div>`:''}</div>`;
+    }
+    html += `</div>`;
+    return html;
+  }
 
+  showMyScheduleForm() {
+    const u = store.currentUser;
+    const accessibleProps = store.properties.filter(p => store.hasPerm(p.id));
+    openModal('📅 내 스케줄 등록', `<form id="msf" class="space-y-4"><div class="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs font-bold text-purple-700">💡 본인 스케줄을 직접 등록할 수 있습니다. 관리자에게도 자동으로 알림이 갑니다.</div><div class="grid grid-cols-2 gap-3"><input type="date" name="date" value="${todayStr()}" class="p-3 border rounded-xl font-bold" required><input type="time" name="time" value="10:00" class="p-3 border rounded-xl font-bold" required></div><input type="hidden" name="staff" value="${u.name}"><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${accessibleProps.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><input name="task" placeholder="업무 (예: 청소, 점검, 미팅)" class="w-full p-3 border rounded-xl font-bold" required><div class="bg-slate-50 p-4 rounded-xl"><p class="text-xs font-black text-slate-500 uppercase mb-2">🔔 알람 (복수 선택)</p><div class="flex gap-2">${[5,15,30,60].map(m=>`<label class="flex items-center gap-1 px-3 py-2 bg-white rounded-lg cursor-pointer font-bold text-xs"><input type="checkbox" name="a${m}"> ${m}분 전</label>`).join('')}</div></div><input name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold"><button class="w-full bg-purple-600 text-white py-4 rounded-xl font-black uppercase">등록 (관리자에게 알림 발송)</button></form>`, 'max-w-xl');
+    document.getElementById('msf').onsubmit = async e => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(e.target));
+      const alarm = []; [5,15,30,60].forEach(m => { if (d['a'+m]) alarm.push(m); delete d['a'+m]; });
+      d.alarm = alarm;
+      showLoading(true);
+      try { await store.addSchedule(d); toast('등록 + 관리자 알림 발송됨','success'); closeModal(); await this.go('mySchedule'); }
+      catch(err) { toast('실패','error'); } finally { showLoading(false); }
+    };
+  }
+  
+  async delMySched(id) {
+    if (!confirm('삭제?')) return;
+    await store.delSchedule(id);
+    toast('삭제됨','success');
+    await this.go('mySchedule');
+  }
+
+  // ===== 매물 액션 =====
   showPropActions(propId) {
     const p = store.prop(propId);
     const url = `${location.origin}${location.pathname}#chat/${propId}`;
-    openModal(`🏠 ${p.name}`, `
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
-        <div class="md:col-span-2"><img src="${p.image}" class="w-full h-64 object-cover rounded-2xl"><h3 class="text-xl font-black mt-4">${p.name}</h3><p class="text-sm text-slate-500 mt-1">${p.location||''}</p><p class="text-2xl font-black text-blue-600 mt-3">${fmt(p.price)}<span class="text-xs">/박</span></p></div>
-        <div class="md:col-span-3 space-y-3">
-          <button onclick="router.showBookingCalendar(${propId})" class="w-full bg-slate-900 text-white p-5 rounded-2xl font-black flex items-center gap-4"><i data-lucide="calendar-check" class="w-6 h-6"></i><div class="text-left flex-1"><p>1. 예약 확인</p><p class="text-xs opacity-60">월별 캘린더</p></div></button>
-          ${store.canEdit(propId)?`<button onclick="closeModal();router.showBookingForm(${propId})" class="w-full bg-blue-600 text-white p-5 rounded-2xl font-black flex items-center gap-4"><i data-lucide="plus-circle" class="w-6 h-6"></i><div class="text-left flex-1"><p>2. 예약 하기</p></div></button>`:''}
-          <button onclick="router.showPropDetail(${propId})" class="w-full bg-white border-2 p-5 rounded-2xl font-black flex items-center gap-4"><i data-lucide="info" class="w-6 h-6"></i><div class="text-left flex-1"><p>3. 세부 정보</p></div></button>
-          <button onclick="router.showChatBox(${propId})" class="w-full bg-green-500 text-white p-5 rounded-2xl font-black flex items-center gap-4"><i data-lucide="message-circle" class="w-6 h-6"></i><div class="text-left flex-1"><p>4. 특이사항</p></div></button>
-          <div class="bg-blue-50 p-4 rounded-2xl"><p class="text-[10px] font-black text-blue-500 uppercase mb-2">🔗 채팅 링크</p><div class="flex gap-2"><input type="text" readonly value="${url}" class="flex-1 px-3 py-2 rounded-xl bg-white text-xs font-mono border"><button onclick="navigator.clipboard.writeText('${url}');toast('복사됨','success')" class="px-3 py-2 bg-blue-600 text-white rounded-xl"><i data-lucide="copy" class="w-4 h-4"></i></button></div></div>
-        </div>
-      </div>`, 'max-w-4xl');
+    const img = p.image || (p.images && p.images[p.mainImage||0]) || '';
+    openModal(`🏠 ${p.name}`, `<div class="grid grid-cols-1 md:grid-cols-5 gap-6"><div class="md:col-span-2"><img src="${img}" class="w-full h-64 object-cover rounded-2xl"><h3 class="text-xl font-black mt-4">${p.name}</h3><p class="text-sm text-slate-500 mt-1">${p.location||''}</p><p class="text-2xl font-black text-blue-600 mt-3">${fmt(p.price)}<span class="text-xs">/박</span></p></div><div class="md:col-span-3 space-y-3"><button onclick="router.showBookingCalendar(${propId})" class="w-full bg-slate-900 text-white p-5 rounded-2xl font-black flex items-center gap-4"><i data-lucide="calendar-check" class="w-6 h-6"></i><div class="text-left flex-1"><p>1. 예약 확인</p></div></button>${store.canEdit(propId)?`<button onclick="closeModal();router.showBookingForm(${propId})" class="w-full bg-blue-600 text-white p-5 rounded-2xl font-black flex items-center gap-4"><i data-lucide="plus-circle" class="w-6 h-6"></i><div class="text-left flex-1"><p>2. 예약 하기</p></div></button>`:''}<button onclick="router.showPropDetail(${propId})" class="w-full bg-white border-2 p-5 rounded-2xl font-black flex items-center gap-4"><i data-lucide="info" class="w-6 h-6"></i><div class="text-left flex-1"><p>3. 세부 정보</p></div></button><button onclick="router.showChatBox(${propId})" class="w-full bg-green-500 text-white p-5 rounded-2xl font-black flex items-center gap-4"><i data-lucide="message-circle" class="w-6 h-6"></i><div class="text-left flex-1"><p>4. 특이사항</p></div></button><div class="bg-blue-50 p-4 rounded-2xl"><p class="text-[10px] font-black text-blue-500 uppercase mb-2">🔗 채팅 링크</p><div class="flex gap-2"><input type="text" readonly value="${url}" class="flex-1 px-3 py-2 rounded-xl bg-white text-xs font-mono border"><button onclick="navigator.clipboard.writeText('${url}');toast('복사됨','success')" class="px-3 py-2 bg-blue-600 text-white rounded-xl"><i data-lucide="copy" class="w-4 h-4"></i></button></div></div></div></div>`, 'max-w-4xl');
     lucide.createIcons();
   }
 
@@ -179,19 +190,10 @@ class Router {
     const year = y ?? now.getFullYear();
     const month = m ?? now.getMonth();
     window._calPropId = propId;
-    openModal(`📅 ${p.name}`, `
-      <div class="flex justify-between items-center mb-6">
-        <div class="flex items-center gap-2">
-          <button onclick="router.showBookingCalendar(${propId},${month===0?year-1:year},${month===0?11:month-1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
-          <h3 class="text-2xl font-black px-4">${year}년 ${month+1}월</h3>
-          <button onclick="router.showBookingCalendar(${propId},${month===11?year+1:year},${month===11?0:month+1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
-        </div>
-        <div class="flex items-center gap-2 text-xs font-bold flex-wrap">${store.platforms.map(pl=>`<span class="flex items-center gap-1"><span class="w-3 h-3 rounded" style="background:${pl.color}"></span>${pl.name}</span>`).join('')}</div>
-      </div>
-      <div class="bg-slate-50 p-4 rounded-2xl">${buildCalendar(year, month, propId, 'router.onCalendarClick')}</div>`, 'max-w-5xl');
+    openModal(`📅 ${p.name}`, `<div class="flex justify-between items-center mb-6"><div class="flex items-center gap-2"><button onclick="router.showBookingCalendar(${propId},${month===0?year-1:year},${month===0?11:month-1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-left" class="w-5 h-5"></i></button><h3 class="text-2xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router.showBookingCalendar(${propId},${month===11?year+1:year},${month===11?0:month+1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-right" class="w-5 h-5"></i></button><button onclick="router.showBookingCalendar(${propId})" class="bg-blue-600 text-white px-3 py-2 rounded-xl font-black text-xs">오늘</button></div><div class="flex items-center gap-2 text-xs font-bold flex-wrap">${store.platforms.map(pl=>`<span class="flex items-center gap-1"><span class="w-3 h-3 rounded" style="background:${pl.color}"></span>${pl.name}</span>`).join('')}</div></div><div class="bg-slate-50 p-4 rounded-2xl">${buildCalendar(year, month, propId, 'router.onCalendarClick')}</div>`, 'max-w-5xl');
     lucide.createIcons();
   }
-
+  
   onCalendarClick(date, bookingId) {
     if (bookingId) {
       const b = store.bookings.find(x => x.id === bookingId);
@@ -203,51 +205,15 @@ class Router {
     }
   }
 
-    showBookingForm(propId, booking=null, prefill=null) {
+  showBookingForm(propId, booking=null, prefill=null) {
     const p = store.prop(propId);
     const b = booking || {};
     const isEdit = !!booking;
-    openModal(`${isEdit?'✏️':'🆕'} ${p.name} - ${isEdit?'예약 수정':'신규 예약'}`, `
-      <form id="bk-form" class="space-y-5">
-        <div class="grid grid-cols-2 gap-4">
-          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">체크인</label><input type="date" name="checkIn" value="${b.checkIn||prefill||todayStr()}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">체크아웃</label><input type="date" name="checkOut" value="${b.checkOut||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">예약자</label><input type="text" name="guest" value="${b.guest||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">연락처</label><input type="text" name="contact" value="${b.contact||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
-        </div>
-        <div class="grid grid-cols-3 gap-4">
-          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">국적</label><input type="text" name="nationality" value="${b.nationality||'한국'}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">인원</label><input type="number" name="people" value="${b.people||2}" min="1" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">플랫폼</label><select name="platform" class="w-full p-3 border rounded-xl font-bold mt-1">${store.platforms.map(pl=>`<option ${b.platform===pl.name?'selected':''}>${pl.name}</option>`).join('')}</select></div>
-        </div>
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl text-white shadow-xl">
-          <div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">원가 (1박 기준)</span><span class="font-black">${fmt(p.cost)}</span></div>
-          <div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">기본 판매가 (1박)</span><span class="font-black">${fmt(p.price)}</span></div>
-          <div class="flex justify-between mb-2 text-xs" id="ni"><span class="opacity-80 font-bold">숙박일 × 원가</span><span class="font-black" id="ct">₩0</span></div>
-          <div class="flex justify-between mb-4 text-xs" id="suggest-info"><span class="opacity-80 font-bold">기본가 × 숙박일 (참고)</span><span class="font-black" id="suggest-price">₩0</span></div>
-          <div class="border-t border-white/20 pt-4">
-            <label class="text-[10px] font-black uppercase opacity-80">최종 가격 (수동입력 - 할인/연박 반영)</label>
-            <input type="number" name="price" value="${b.price||p.price}" class="w-full mt-2 p-4 bg-white/10 border-2 border-white/20 rounded-xl text-2xl font-black outline-none focus:border-white" required>
-          </div>
-        </div>
-        <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">메모</label><textarea name="memo" placeholder="예약 특이사항을 입력하세요..." class="w-full p-3 border rounded-xl font-bold mt-1 h-20">${b.memo||''}</textarea></div>
-        <div class="flex gap-3 pt-4 border-t">
-          <button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black">${isEdit?'예약 수정':'예약 등록'}</button>
-          ${isEdit?`<button type="button" onclick="router.deleteBooking(${booking.id})" class="px-8 bg-red-50 text-red-500 rounded-xl font-black">예약 취소</button>`:''}
-        </div>
-      </form>`, 'max-w-3xl');
+    openModal(`${isEdit?'✏️':'🆕'} ${p.name}`, `<form id="bk-form" class="space-y-5"><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-black text-slate-400 uppercase">체크인</label><input type="date" name="checkIn" value="${b.checkIn||prefill||todayStr()}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div><div><label class="text-[10px] font-black text-slate-400 uppercase">체크아웃</label><input type="date" name="checkOut" value="${b.checkOut||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div></div><div class="grid grid-cols-2 gap-4"><input name="guest" value="${b.guest||''}" placeholder="예약자" class="w-full p-3 border rounded-xl font-bold" required><input name="contact" value="${b.contact||''}" placeholder="연락처" class="w-full p-3 border rounded-xl font-bold" required></div><div class="grid grid-cols-3 gap-4"><input name="nationality" value="${b.nationality||'한국'}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold"><input type="number" name="people" value="${b.people||2}" min="1" placeholder="인원" class="w-full p-3 border rounded-xl font-bold"><select name="platform" class="w-full p-3 border rounded-xl font-bold">${store.platforms.map(pl=>`<option ${b.platform===pl.name?'selected':''}>${pl.name}</option>`).join('')}</select></div><div class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl text-white"><div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">원가 (1박)</span><span class="font-black">${fmt(p.cost)}</span></div><div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">기본가 (1박)</span><span class="font-black">${fmt(p.price)}</span></div><div class="flex justify-between mb-2 text-xs" id="ni"><span class="opacity-80 font-bold">숙박일 × 원가</span><span class="font-black" id="ct">₩0</span></div><div class="flex justify-between mb-4 text-xs"><span class="opacity-80 font-bold">기본가 × 숙박일</span><span class="font-black" id="sp">₩0</span></div><label class="text-[10px] font-black uppercase opacity-80">최종 가격 (수동입력)</label><input type="number" name="price" value="${b.price||p.price}" class="w-full mt-2 p-4 bg-white/10 border-2 border-white/20 rounded-xl text-2xl font-black outline-none focus:border-white" required></div><textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold h-20">${b.memo||''}</textarea><div class="flex gap-3"><button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black">${isEdit?'예약 수정':'예약 등록'}</button>${isEdit?`<button type="button" onclick="router.deleteBooking(${booking.id})" class="px-8 bg-red-50 text-red-500 rounded-xl font-black">예약 취소</button>`:''}</div></form>`, 'max-w-3xl');
     const f = document.getElementById('bk-form');
     const upd = () => {
       const ci=f.checkIn.value, co=f.checkOut.value;
-      if (ci&&co) {
-        const n=daysBetween(ci,co);
-        f.querySelector('#ni span:first-child').textContent=`${n}박 × 원가`;
-        f.querySelector('#ct').textContent=fmt(n*p.cost);
-        f.querySelector('#suggest-info span:first-child').textContent=`기본가 × ${n}박 (참고)`;
-        f.querySelector('#suggest-price').textContent=fmt(n*p.price);
-      }
+      if (ci&&co) { const n=daysBetween(ci,co); f.querySelector('#ni span:first-child').textContent=`${n}박 × 원가`; f.querySelector('#ct').textContent=fmt(n*p.cost); f.querySelector('#sp').textContent=fmt(n*p.price); }
     };
     f.checkIn.onchange = f.checkOut.onchange = upd; upd();
     f.onsubmit = async e => {
@@ -255,20 +221,20 @@ class Router {
       const d = Object.fromEntries(new FormData(e.target));
       if (d.checkIn >= d.checkOut) { toast('체크아웃은 체크인 이후','error'); return; }
       const conflict = store.bookings.find(bk => bk.propId===propId && bk.id!==booking?.id && !(d.checkOut<=bk.checkIn || d.checkIn>=bk.checkOut));
-      if (conflict) { toast(`예약 충돌: ${conflict.guest} (${conflict.checkIn}~${conflict.checkOut})`,'error'); return; }
+      if (conflict) { toast(`예약 충돌: ${conflict.guest}`,'error'); return; }
       d.propId = propId;
       showLoading(true);
       try {
         if (isEdit) await store.updateBooking(booking.id, d);
         else await store.addBooking(d);
-        toast(isEdit?'수정완료':'등록완료','success');
+        toast(isEdit?'수정':'등록','success');
         closeModal();
         if (document.querySelector('[data-admin]')) await this.renderAdminTab();
-      } catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
+      } catch(err) { toast('실패','error'); } finally { showLoading(false); }
     };
     lucide.createIcons();
   }
-
+  
   async deleteBooking(id) {
     if (!confirm('취소?')) return;
     showLoading(true);
@@ -282,24 +248,14 @@ class Router {
     const images = p.images && p.images.length ? p.images : (p.image ? [p.image] : []);
     const mainIdx = p.mainImage || 0;
     const main = images[mainIdx] || images[0] || '';
-    
-    openModal(`ℹ️ ${p.name}`, `
-      ${main?`<img src="${main}" class="w-full h-72 object-cover rounded-2xl mb-4">`:''}
-      ${images.length>1?`<div class="grid grid-cols-${Math.min(images.length,5)} gap-2 mb-6">${images.map((img,i)=>`<img src="${img}" class="w-full h-20 object-cover rounded-lg cursor-pointer ${i===mainIdx?'ring-2 ring-blue-500':''}" onclick="this.parentElement.previousElementSibling.src='${img}'">`).join('')}</div>`:'<div class="mb-6"></div>'}
-      <p class="text-sm bg-slate-50 p-6 rounded-2xl mb-6">${p.description||'-'}</p>
-      <div class="grid grid-cols-2 gap-3 text-sm mb-4">${[['그룹',p.group],['주소',p.address],['1박',fmt(p.price)],['원가',fmt(p.cost)],['담당',mgr?.name||'-'],['수리',p.repair],['청소',p.cleaning],['가스',p.gas],['인터넷',p.internet],['분리수거',p.recycleDay],['비밀번호',p.password],['관리실',p.office],['이용안내',p.guide?`<a href="${p.guide}" target="_blank" class="text-blue-600">${p.guide}</a>`:'-']].map(([k,v])=>`<div class="bg-white p-4 rounded-xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${k}</p><p class="font-bold mt-1">${v||'-'}</p></div>`).join('')}</div>
-      ${p.customFields&&p.customFields.length?`<div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4"><p class="text-xs font-black text-amber-700 uppercase tracking-widest mb-3">📌 추가 운영 정보</p><div class="grid grid-cols-2 gap-2 text-sm">${p.customFields.map(cf=>`<div class="bg-white p-3 rounded-lg"><p class="text-[10px] font-black text-amber-600 uppercase">${cf.label}</p><p class="font-bold mt-1">${cf.value||'-'}</p></div>`).join('')}</div></div>`:''}
-    `, 'max-w-4xl');
+    openModal(`ℹ️ ${p.name}`, `${main?`<img src="${main}" class="w-full h-72 object-cover rounded-2xl mb-4">`:''}${images.length>1?`<div class="grid grid-cols-${Math.min(images.length,5)} gap-2 mb-6">${images.map((img,i)=>`<img src="${img}" class="w-full h-20 object-cover rounded-lg ${i===mainIdx?'ring-2 ring-blue-500':''}">`).join('')}</div>`:'<div class="mb-6"></div>'}<p class="text-sm bg-slate-50 p-6 rounded-2xl mb-6">${p.description||'-'}</p><div class="grid grid-cols-2 gap-3 text-sm mb-4">${[['그룹',p.group],['주소',p.address],['1박',fmt(p.price)],['원가',fmt(p.cost)],['담당',mgr?.name||'-'],['수리',p.repair],['청소',p.cleaning],['가스',p.gas],['인터넷',p.internet],['분리수거',p.recycleDay],['비밀번호',p.password],['관리실',p.office]].map(([k,v])=>`<div class="bg-white p-4 rounded-xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${k}</p><p class="font-bold mt-1">${v||'-'}</p></div>`).join('')}</div>${p.customFields&&p.customFields.length?`<div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4"><p class="text-xs font-black text-amber-700 uppercase mb-3">📌 추가 운영 정보</p><div class="grid grid-cols-2 gap-2 text-sm">${p.customFields.map(cf=>`<div class="bg-white p-3 rounded-lg"><p class="text-[10px] font-black text-amber-600 uppercase">${cf.label}</p><p class="font-bold mt-1">${cf.value||'-'}</p></div>`).join('')}</div></div>`:''}`, 'max-w-4xl');
   }
 
   showChatBox(propId) {
     const p = store.prop(propId);
     const chats = store.chats.filter(c => c.propId === propId);
     const url = `${location.origin}${location.pathname}#chat/${propId}`;
-    openModal(`💬 ${p.name}`, `
-      <div class="bg-blue-50 p-3 rounded-xl mb-4 flex items-center gap-2 text-xs"><i data-lucide="link" class="w-4 h-4 text-blue-600"></i><code class="flex-1 font-mono text-blue-700">${url}</code><button onclick="navigator.clipboard.writeText('${url}');toast('복사','success')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold">복사</button></div>
-      <div id="cb" class="h-96 overflow-y-auto scrollbar bg-slate-50 rounded-2xl p-4 space-y-4 mb-4">${chats.length?chats.map(c=>`<div class="flex flex-col ${c.role==='Admin'?'items-end':'items-start'}"><p class="text-[9px] font-black text-slate-400 mb-1">${c.sender}·${c.time}</p><div class="max-w-[75%] p-3 rounded-2xl text-sm font-medium ${c.role==='Admin'?'bg-slate-900 text-white':c.role==='Manager'?'bg-blue-500 text-white':'bg-white border'}">${c.message}</div></div>`).join(''):'<p class="text-center text-slate-400 py-16">대화 없음</p>'}</div>
-      <form id="cf" class="flex gap-2"><input id="ci" class="flex-1 px-4 py-3 bg-slate-100 rounded-xl outline-none font-bold text-sm" placeholder="메시지..."><button class="px-5 bg-blue-600 text-white rounded-xl font-black"><i data-lucide="send" class="w-4 h-4"></i></button></form>`, 'max-w-3xl');
+    openModal(`💬 ${p.name}`, `<div class="bg-blue-50 p-3 rounded-xl mb-4 flex items-center gap-2 text-xs"><i data-lucide="link" class="w-4 h-4 text-blue-600"></i><code class="flex-1 font-mono text-blue-700">${url}</code><button onclick="navigator.clipboard.writeText('${url}');toast('복사','success')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold">복사</button></div><div id="cb" class="h-96 overflow-y-auto scrollbar bg-slate-50 rounded-2xl p-4 space-y-4 mb-4">${chats.length?chats.map(c=>`<div class="flex flex-col ${c.role==='Admin'?'items-end':'items-start'}"><p class="text-[9px] font-black text-slate-400 mb-1">${c.sender}·${c.time}</p><div class="max-w-[75%] p-3 rounded-2xl text-sm font-medium ${c.role==='Admin'?'bg-slate-900 text-white':c.role==='Manager'?'bg-blue-500 text-white':'bg-white border'}">${c.message}</div></div>`).join(''):'<p class="text-center text-slate-400 py-16">대화 없음</p>'}</div><form id="cf" class="flex gap-2"><input id="ci" class="flex-1 px-4 py-3 bg-slate-100 rounded-xl outline-none font-bold text-sm" placeholder="메시지..."><button class="px-5 bg-blue-600 text-white rounded-xl font-black"><i data-lucide="send" class="w-4 h-4"></i></button></form>`, 'max-w-3xl');
     document.getElementById('cb').scrollTop = 999999;
     document.getElementById('cf').onsubmit = async e => {
       e.preventDefault();
@@ -310,77 +266,102 @@ class Router {
     };
     lucide.createIcons();
   }
-
-  async renderChat(params) {
-    await this.renderHome();
-    setTimeout(() => this.showChatBox(+params.id), 100);
-  }
   
+  async renderChat(params) { await this.renderHome(); setTimeout(() => this.showChatBox(+params.id), 100); }
+  // ============ ADMIN ENTRY ============
   async renderAdmin() {
     if (store.currentUser.role !== 'Admin') { this.go('home'); return; }
-    document.getElementById('app-root').innerHTML = `
-      <div class="flex min-h-screen">
-        <aside class="w-64 bg-slate-900 text-white p-5 sticky top-0 h-screen overflow-y-auto scrollbar">
-          <div class="mb-6 px-2 cursor-pointer" onclick="router.go('home')"><h1 class="text-xl font-black">QJ ADMIN</h1><p class="text-[9px] text-slate-500 font-bold uppercase">← 홈으로</p></div>
-          <nav class="space-y-0.5" id="anav"></nav>
-        </aside>
-        <main class="flex-1 bg-slate-50">${UI.Header('Admin Control')}<div class="p-8" id="abody" data-admin></div></main>
-      </div>`;
+    document.getElementById('app-root').innerHTML = `<div class="flex min-h-screen"><aside class="w-64 bg-slate-900 text-white p-5 sticky top-0 h-screen overflow-y-auto scrollbar"><div class="mb-6 px-2 cursor-pointer" onclick="router.go('home')"><h1 class="text-xl font-black">QJ ADMIN</h1><p class="text-[9px] text-slate-500 font-bold uppercase">← 홈으로</p></div><nav class="space-y-0.5" id="anav"></nav></aside><main class="flex-1 bg-slate-50">${UI.Header('Admin Control')}<div class="p-8" id="abody" data-admin></div></main></div>`;
     this.renderAdminNav();
     await this.renderAdminTab();
   }
-
+  
   renderAdminNav() {
     const items = [
-      ['main','home','MAIN 대시보드'],['props','building','매물 관리'],['sales','trending-up','매출 관리'],
-      ['expenses','credit-card','지출 관리'],['bookings','calendar','예약 관리'],['stats','bar-chart-3','통계 & 보고서'],
-      ['ops','clipboard-list','운영 관리'],['customers','users','고객 관리'],['users','user-cog','이용자/권한'],
-      ['profileReq','user-check','프로필 요청'],['chats','message-square','채팅 관리'],['logs','list-checks','로그 관리'],
-      ['staff','calendar-days','직원 관리'],['etc','package','기타 관리']
+      ['main','home','MAIN 대시보드'],
+      ['aiInsights','sparkles','✨ AI 인사이트'],
+      ['smartPricing','dollar-sign','💎 AI 스마트 가격'],
+      ['props','building','매물 관리'],
+      ['sales','trending-up','매출 관리'],
+      ['expenses','credit-card','지출 관리'],
+      ['bookings','calendar','예약 관리'],
+      ['stats','bar-chart-3','통계/보고서'],
+      ['ops','clipboard-list','운영 관리'],
+      ['customers','users','고객 관리'],
+      ['users','user-cog','이용자/권한'],
+      ['profileReq','user-check','프로필 요청'],
+      ['chats','message-square','채팅 관리'],
+      ['logs','list-checks','로그 관리'],
+      ['staff','calendar-days','직원 관리'],
+      ['etc','package','기타 관리']
     ];
     const pending = store.pendingProfileRequests().length;
     document.getElementById('anav').innerHTML = items.map(([k,i,l])=>`<a onclick="router.adminTab='${k}';router.renderAdminNav();router.renderAdminTab()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition ${this.adminTab===k?'bg-blue-600 text-white font-black shadow-lg':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${i}" class="w-4 h-4"></i><span class="text-xs flex-1">${l}</span>${k==='profileReq'&&pending?`<span class="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">${pending}</span>`:''}</a>`).join('');
     lucide.createIcons();
   }
-
+  
   async renderAdminTab() {
     const c = document.getElementById('abody');
     if (!c) return;
-    const fn = {main:this.admMain, props:this.admProps, sales:this.admSales, expenses:this.admExpenses, bookings:this.admBookings, stats:this.admStats, ops:this.admOps, customers:this.admCustomers, users:this.admUsers, profileReq:this.admProfileReq, chats:this.admChats, logs:this.admLogs, staff:this.admStaff, etc:this.admEtc}[this.adminTab];
+    const fn = {
+      main:this.admMain, aiInsights:this.admAIInsights, smartPricing:this.admSmartPricing,
+      props:this.admProps, sales:this.admSales, expenses:this.admExpenses, bookings:this.admBookings,
+      stats:this.admStats, ops:this.admOps, customers:this.admCustomers, users:this.admUsers,
+      profileReq:this.admProfileReq, chats:this.admChats, logs:this.admLogs,
+      staff:this.admStaff, etc:this.admEtc
+    }[this.adminTab];
     if (fn) fn.call(this, c);
     lucide.createIcons();
   }
 
+  // ===== MAIN 대시보드 =====
   admMain(c) {
     const rev = store.bookings.reduce((s,b)=>s+(+b.price||0),0);
     const cost = store.expenses.reduce((s,e)=>s+(+e.amount||0),0);
     const specials = store.logs.filter(l=>l.special).slice(0,5);
-    c.innerHTML = `<h2 class="text-3xl font-black mb-2">📊 운영 현황 한눈에 보기</h2><p class="text-slate-500 mb-8">최근 활동 및 특이사항 모니터링</p>
-      <div class="grid grid-cols-4 gap-4 mb-8">
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-[10px] font-black uppercase opacity-70">총 매출</p><p class="text-2xl font-black mt-2">${fmt(rev)}</p></div>
-        <div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총 지출</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(cost)}</p></div>
-        <div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">순이익</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-cost)}</p></div>
-        <div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">가동률</p><p class="text-2xl font-black mt-2">${store.properties.length?Math.round(store.properties.filter(p=>getBookingForDate(p.id,todayStr())).length/store.properties.length*100):0}%</p></div>
-      </div>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">🚨 특이사항 (최근 5건)</h3>${specials.length?specials.map(s=>`<div class="p-3 bg-red-50 rounded-xl mb-2 border border-red-100"><p class="text-sm font-bold text-red-700">${s.message}</p><p class="text-[10px] text-slate-400 font-bold mt-1">${s.time} · ${s.user}</p></div>`).join(''):'<p class="text-slate-400 py-8 text-center">특이사항 없음</p>'}</div>
-        <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📈 매출 추이 (숙소별)</h3><canvas id="mc" height="200"></canvas></div>
-      </div>`;
+    const insights = store.getAIInsights().slice(0,3);
+    c.innerHTML = `<h2 class="text-3xl font-black mb-2">📊 운영 현황</h2><p class="text-slate-500 mb-8">최근 활동 모니터링</p><div class="grid grid-cols-4 gap-4 mb-8"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-[10px] font-black uppercase opacity-70">총 매출</p><p class="text-2xl font-black mt-2">${fmt(rev)}</p></div><div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총 지출</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(cost)}</p></div><div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">순이익</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-cost)}</p></div><div class="bg-white p-6 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">가동률</p><p class="text-2xl font-black mt-2">${store.properties.length?Math.round(store.properties.filter(p=>getBookingForDate(p.id,todayStr())).length/store.properties.length*100):0}%</p></div></div>${insights.length?`<div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-5 rounded-2xl mb-6 cursor-pointer" onclick="router.adminTab='aiInsights';router.renderAdminNav();router.renderAdminTab()"><div class="flex items-center justify-between mb-3"><h3 class="font-black flex items-center gap-2"><i data-lucide="sparkles" class="w-5 h-5"></i>AI 인사이트 (${insights.length}건)</h3><span class="text-xs opacity-80">전체보기 →</span></div><div class="space-y-2">${insights.map(i=>`<div class="bg-white/10 rounded-xl p-3"><p class="text-sm font-black">${i.title}</p><p class="text-[10px] opacity-80 mt-1">${i.desc}</p></div>`).join('')}</div></div>`:''}<div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">🚨 특이사항 (최근 5건)</h3>${specials.length?specials.map(s=>`<div class="p-3 bg-red-50 rounded-xl mb-2 border border-red-100"><p class="text-sm font-bold text-red-700">${s.message}</p><p class="text-[10px] text-slate-400 font-bold mt-1">${s.time}</p></div>`).join(''):'<p class="text-slate-400 py-8 text-center">없음</p>'}</div><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📈 숙소별 매출</h3><canvas id="mc" height="200"></canvas></div></div>`;
     setTimeout(()=>{
       const data = store.properties.map(p=>({n:p.name.slice(0,8),v:store.bookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+b.price,0)}));
-      new Chart(document.getElementById('mc'),{type:'bar',data:{labels:data.map(d=>d.n),datasets:[{label:'매출',data:data.map(d=>d.v),backgroundColor:'#2563eb'}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+      new Chart(document.getElementById('mc'),{type:'bar',data:{labels:data.map(d=>d.n),datasets:[{data:data.map(d=>d.v),backgroundColor:'#2563eb'}]},options:{plugins:{legend:{display:false}}}});
     },100);
   }
 
+  // ===== AI 인사이트 (NEW) =====
+  admAIInsights(c) {
+    const insights = store.getAIInsights();
+    const groupedByLevel = { warning: [], info: [], success: [] };
+    insights.forEach(i => groupedByLevel[i.level]?.push(i));
+    c.innerHTML = `<div class="flex justify-between items-center mb-6"><div><h2 class="text-3xl font-black">✨ AI 인사이트</h2><p class="text-slate-500 mt-1">데이터 분석 기반 자동 운영 개선 추천</p></div><button onclick="router.renderAdminTab()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm"><i data-lucide="refresh-cw" class="w-4 h-4 inline"></i> 다시 분석</button></div><div class="grid grid-cols-3 gap-4 mb-6"><div class="bg-red-50 border-2 border-red-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-red-600 uppercase">⚠️ 경고</p><p class="text-3xl font-black text-red-700 mt-2">${groupedByLevel.warning.length}건</p></div><div class="bg-blue-50 border-2 border-blue-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-blue-600 uppercase">ℹ️ 알림</p><p class="text-3xl font-black text-blue-700 mt-2">${groupedByLevel.info.length}건</p></div><div class="bg-green-50 border-2 border-green-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-green-600 uppercase">✅ 추천</p><p class="text-3xl font-black text-green-700 mt-2">${groupedByLevel.success.length}건</p></div></div><div class="space-y-3">${insights.length?insights.map(i=>{const colors={warning:'bg-red-50 border-red-200',info:'bg-blue-50 border-blue-200',success:'bg-green-50 border-green-200'};return `<div class="${colors[i.level]} border-2 rounded-2xl p-5 flex items-start gap-4"><div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center"><i data-lucide="${i.icon}" class="w-6 h-6"></i></div><div class="flex-1"><h3 class="font-black text-lg">${i.title}</h3><p class="text-sm text-slate-700 mt-1 font-medium">${i.desc}</p></div><button onclick="router.actOnInsight('${i.action}')" class="bg-slate-900 text-white px-4 py-2 rounded-xl font-black text-xs">조치 →</button></div>`}).join(''):'<div class="text-center py-16 text-slate-400"><i data-lucide="check-circle" class="w-16 h-16 mx-auto mb-3 text-green-200"></i><p class="font-black">모든 운영이 정상입니다 ✅</p></div>'}</div><div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-6 rounded-2xl mt-6"><h3 class="font-black text-lg mb-2">💡 AI 운영 팁</h3><div class="grid grid-cols-2 gap-3 text-sm"><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">📈 평균 가동률</p><p class="text-2xl font-black">${store.properties.length?Math.round(store.properties.filter(p=>getBookingForDate(p.id,todayStr())).length/store.properties.length*100):0}%</p></div><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">💰 평균 객단가</p><p class="text-2xl font-black">${fmt(store.bookings.length?Math.round(store.bookings.reduce((s,b)=>s+b.price,0)/store.bookings.length):0)}</p></div></div></div>`;
+    lucide.createIcons();
+  }
+  
+  actOnInsight(action) {
+    const map = {pricing:'smartPricing', cost:'expenses', marketing:'sales', payment:'bookings', schedule:'staff'};
+    if (map[action]) { this.adminTab = map[action]; this.renderAdminNav(); this.renderAdminTab(); }
+  }
+
+  // ===== AI 스마트 가격 추천 (BONUS NEW FEATURE) =====
+  admSmartPricing(c) {
+    c.innerHTML = `<div class="mb-6"><h2 class="text-3xl font-black">💎 AI 스마트 가격 추천</h2><p class="text-slate-500 mt-1">실거래 데이터 분석으로 최적 가격 자동 제안</p></div><div class="bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white p-6 rounded-2xl mb-6"><h3 class="font-black text-lg mb-3">🤖 AI 분석 알고리즘</h3><div class="grid grid-cols-3 gap-3 text-sm"><div class="bg-white/10 p-3 rounded-xl"><p class="font-black">📊 최근 실거래</p><p class="text-xs opacity-80 mt-1">최근 90일 거래 분석</p></div><div class="bg-white/10 p-3 rounded-xl"><p class="font-black">📅 요일별 가격</p><p class="text-xs opacity-80 mt-1">평일/주말 차이 반영</p></div><div class="bg-white/10 p-3 rounded-xl"><p class="font-black">📈 수요 추세</p><p class="text-xs opacity-80 mt-1">상승/하락 트렌드 감지</p></div></div></div><div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${store.properties.map(p=>{const sp=store.getSmartPricing(p.id);if(!sp)return'';const diff=sp.suggested-sp.currentPrice;const pct=Math.round(diff/sp.currentPrice*100);const trendCol={up:'text-green-600 bg-green-50',down:'text-red-600 bg-red-50',stable:'text-blue-600 bg-blue-50'}[sp.trend];const trendIcon={up:'trending-up',down:'trending-down',stable:'minus'}[sp.trend];return `<div class="bg-white rounded-2xl border-2 p-5"><div class="flex items-center justify-between mb-4"><div><h4 class="font-black text-lg">${p.name}</h4><p class="text-xs text-slate-400 font-bold">${p.location||''}</p></div><span class="px-3 py-1 ${trendCol} rounded-full text-xs font-black flex items-center gap-1"><i data-lucide="${trendIcon}" class="w-3 h-3"></i>${sp.trend.toUpperCase()}</span></div><div class="grid grid-cols-2 gap-3 mb-4"><div class="bg-slate-50 p-3 rounded-xl"><p class="text-[10px] font-black text-slate-400 uppercase">현재 가격</p><p class="text-xl font-black text-slate-700">${fmt(sp.currentPrice)}</p></div><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-3 rounded-xl"><p class="text-[10px] font-black opacity-70 uppercase">AI 추천 가격</p><p class="text-xl font-black">${fmt(sp.suggested)}</p></div></div><div class="space-y-1 text-xs mb-4"><div class="flex justify-between"><span class="text-slate-500 font-bold">실거래 평균:</span><span class="font-black">${fmt(sp.avgNightly)}</span></div><div class="flex justify-between"><span class="text-slate-500 font-bold">최근 90일 평균:</span><span class="font-black">${fmt(sp.recentAvg)}</span></div>${sp.weekendBoost>0?`<div class="flex justify-between"><span class="text-slate-500 font-bold">주말 가산금:</span><span class="font-black text-amber-600">+${fmt(sp.weekendBoost)}</span></div>`:''}<div class="flex justify-between pt-2 border-t"><span class="text-slate-500 font-bold">신뢰도:</span><span class="font-black text-blue-600">${sp.confidence}%</span></div></div><div class="bg-amber-50 p-3 rounded-xl mb-3"><p class="text-xs font-bold text-amber-700">💡 ${sp.reason}</p></div>${diff!==0?`<button onclick="router.applySmartPrice(${p.id},${sp.suggested})" class="w-full bg-slate-900 text-white py-3 rounded-xl font-black text-sm">${pct>0?'가격 인상':'가격 인하'} 적용 (${pct>0?'+':''}${pct}%)</button>`:'<div class="text-center text-xs text-slate-400 font-bold py-2">현재 가격이 최적입니다 ✓</div>'}</div>`}).join('')}</div>`;
+    lucide.createIcons();
+  }
+  
+  async applySmartPrice(propId, newPrice) {
+    if (!confirm(`가격을 ${fmt(newPrice)}로 변경하시겠습니까?`)) return;
+    const p = store.prop(propId);
+    showLoading(true);
+    try { await store.upsertProp({...p, price: newPrice}); toast('AI 추천 가격 적용됨','success'); await this.renderAdminTab(); }
+    catch(e) { toast('실패','error'); } finally { showLoading(false); }
+  }
+
+  // ===== 매물 관리 =====
   admProps(c) {
-    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">🏠 매물 관리 (${store.properties.length})</h2><div class="flex gap-2"><button onclick="router.showGroupMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 그룹 관리</button><button onclick="router.showPropForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 신규 매물</button></div></div>
-      <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>`<div class="bg-white p-5 rounded-2xl border flex gap-4 hover:shadow-xl transition"><img src="${p.image}" class="w-20 h-20 rounded-xl object-cover"><div class="flex-1 min-w-0"><div class="flex items-center gap-2"><p class="font-black truncate">${p.name}</p>${badge(p.status)}</div><p class="text-[10px] text-slate-400 font-bold mt-1">${p.group||'-'} · ${fmt(p.price)}</p><p class="text-[9px] text-slate-400 mt-1 flex items-center gap-1">담당: ${mgrTag(p.manager)}</p></div><div class="flex flex-col gap-1"><button onclick="router.showPropForm(${p.id})" class="p-2 bg-slate-100 rounded-lg"><i data-lucide="edit-3" class="w-4 h-4"></i></button><button onclick="router.delProp(${p.id})" class="p-2 bg-red-50 text-red-500 rounded-lg"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>`).join('')}</div>`;
+    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">🏠 매물 관리 (${store.properties.length})</h2><div class="flex gap-2"><button onclick="router.showGroupMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 그룹</button><button onclick="router.showPropForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 신규</button></div></div><div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>{const img=p.image||(p.images&&p.images[p.mainImage||0])||'https://via.placeholder.com/80';return `<div class="bg-white p-5 rounded-2xl border flex gap-4 hover:shadow-xl transition"><img src="${img}" class="w-20 h-20 rounded-xl object-cover"><div class="flex-1 min-w-0"><div class="flex items-center gap-2"><p class="font-black truncate">${p.name}</p>${badge(p.status)}</div><p class="text-[10px] text-slate-400 font-bold mt-1">${p.group||'-'} · ${fmt(p.price)}</p><p class="text-[9px] text-slate-400 mt-1 flex items-center gap-1">담당: ${mgrTag(p.manager)}</p></div><div class="flex flex-col gap-1"><button onclick="router.showPropForm(${p.id})" class="p-2 bg-slate-100 rounded-lg"><i data-lucide="edit-3" class="w-4 h-4"></i></button><button onclick="router.delProp(${p.id})" class="p-2 bg-red-50 text-red-500 rounded-lg"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>`}).join('')}</div>`;
   }
 
   showGroupMgr() {
-    openModal('📁 그룹 관리', `
-      <div class="space-y-2 mb-4">${store.groups.map((g,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl"><span class="flex-1 font-bold">${g}</span><button onclick="router.delGroup(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')}</div>
-      <form id="gf"><div class="flex gap-2"><input name="g" placeholder="새 그룹명" class="flex-1 p-3 border rounded-xl font-bold"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`, 'max-w-md');
+    openModal('📁 그룹 관리', `<div class="space-y-2 mb-4">${store.groups.map((g,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl"><span class="flex-1 font-bold">${g}</span><button onclick="router.delGroup(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')}</div><form id="gf"><div class="flex gap-2"><input name="g" placeholder="새 그룹명" class="flex-1 p-3 border rounded-xl font-bold"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`, 'max-w-md');
     document.getElementById('gf').onsubmit = async e => {
       e.preventDefault();
       const v = e.target.g.value.trim();
@@ -393,7 +374,7 @@ class Router {
     };
     lucide.createIcons();
   }
-
+  
   async delGroup(i) {
     if (!confirm('삭제?')) return;
     store.groups.splice(i,1);
@@ -403,345 +384,132 @@ class Router {
   }
 
   showPropForm(pid=null) {
-    const p = pid?store.prop(pid):{id:'',name:'',group:store.groups[0]||'서울',location:'',address:'',price:100000,cost:40000,images:[],mainImage:0,description:'',manager:'',customFields:[],repair:'완료',cleaning:'완료',gas:'도시가스',internet:'KT 기가',recycleDay:'',password:'',office:'',guide:''};
-    // 기존 단일 image 호환
+    const p = pid?store.prop(pid):{id:'',name:'',group:store.groups[0]||'서울',location:'',address:'',price:100000,cost:40000,images:[],mainImage:0,description:'',manager:'',customFields:[],repair:'완료',cleaning:'완료',gas:'도시가스',internet:'',recycleDay:'',password:'',office:'',guide:''};
     if (!p.images && p.image) p.images = [p.image];
     if (!p.images) p.images = [];
     if (!p.customFields) p.customFields = [];
-    
-    openModal(pid?'✏️ 매물 수정':'🆕 매물 등록', `<form id="pf" class="space-y-4">
-      <div class="grid grid-cols-2 gap-3">
-        <input name="name" value="${p.name}" placeholder="숙소명" class="p-3 border rounded-xl font-bold" required>
-        <select name="group" class="p-3 border rounded-xl font-bold">${store.groups.map(g=>`<option ${p.group===g?'selected':''}>${g}</option>`).join('')}</select>
-      </div>
-      <input name="location" value="${p.location||''}" placeholder="위치" class="w-full p-3 border rounded-xl font-bold" required>
-      <input name="address" value="${p.address||''}" placeholder="상세주소" class="w-full p-3 border rounded-xl font-bold">
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="text-[10px] font-black text-blue-500">판매가 (1박)</label><input type="number" name="price" value="${p.price}" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1" required></div>
-        <div><label class="text-[10px] font-black text-slate-400">원가</label><input type="number" name="cost" value="${p.cost}" class="w-full p-3 border rounded-xl font-black text-slate-500 mt-1" required></div>
-      </div>
-      
-      <!-- 이미지 다중 업로드 -->
-      <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-        <p class="text-xs font-black text-blue-700 uppercase tracking-widest mb-3">📷 이미지 업로드 (다중 선택, 각 10MB 이하)</p>
-        <input type="file" id="imgUpload" accept="image/*" multiple class="w-full p-3 border-2 border-dashed border-blue-300 rounded-xl bg-white font-bold text-sm cursor-pointer">
-        <p class="text-[10px] text-slate-500 font-bold mt-2">💡 별표(⭐) 클릭 시 대표 이미지로 설정</p>
-        <div id="imgPreview" class="grid grid-cols-4 gap-2 mt-3">${p.images.map((img,i)=>`<div class="relative group" data-idx="${i}"><img src="${img}" class="w-full h-24 object-cover rounded-lg border-2 ${p.mainImage===i?'border-amber-500 ring-2 ring-amber-200':'border-slate-200'}"><button type="button" onclick="router._setMainImage(${i})" class="absolute top-1 left-1 w-6 h-6 ${p.mainImage===i?'bg-amber-500':'bg-white/80'} rounded-full flex items-center justify-center text-xs">⭐</button><button type="button" onclick="router._removeImage(${i})" class="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs">×</button>${p.mainImage===i?'<span class="absolute bottom-1 left-1 right-1 text-[9px] font-black bg-amber-500 text-white px-1 py-0.5 rounded text-center">대표</span>':''}</div>`).join('')}</div>
-      </div>
-      
-      <textarea name="description" placeholder="세부사항" class="w-full p-3 border rounded-xl h-24 font-bold">${p.description||''}</textarea>
-      
-      <!-- 기본 운영정보 -->
-      <div class="bg-slate-50 p-4 rounded-xl space-y-3">
-        <p class="text-xs font-black text-slate-400 uppercase tracking-widest">기본 운영 정보</p>
-        <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-[10px] font-black">담당매니저 🔔</label><select name="manager" class="w-full p-3 border rounded-xl font-bold mt-1"><option value="">-</option>${store.users.filter(u=>u.role==='Manager').map(u=>`<option value="${u.id}" ${p.manager===u.id?'selected':''}>${u.name}</option>`).join('')}</select></div>
-          <div><label class="text-[10px] font-black">수리여부</label><input name="repair" value="${p.repair||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black">입주청소</label><input name="cleaning" value="${p.cleaning||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black">도시가스</label><input name="gas" value="${p.gas||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black">인터넷</label><input name="internet" value="${p.internet||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black">분리수거일</label><input name="recycleDay" value="${p.recycleDay||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black">비밀번호</label><input name="password" value="${p.password||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black">관리실 번호</label><input name="office" value="${p.office||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div class="col-span-2"><label class="text-[10px] font-black">이용안내 링크</label><input name="guide" value="${p.guide||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-        </div>
-      </div>
-      
-      <!-- 커스텀 운영정보 -->
-      <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
-        <div class="flex justify-between items-center mb-3">
-          <p class="text-xs font-black text-amber-700 uppercase tracking-widest">📌 추가 운영 정보 (사용자 정의)</p>
-          <button type="button" onclick="router._addCustomField()" class="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-black">+ 항목 추가</button>
-        </div>
-        <div id="customFields" class="space-y-2">${p.customFields.map((cf,i)=>`<div class="flex gap-2 items-center bg-white p-2 rounded-lg" data-cf-idx="${i}"><input value="${cf.label}" placeholder="항목명 (예: CCTV)" class="cf-label flex-1 p-2 border rounded-lg text-sm font-bold"><input value="${cf.value}" placeholder="내용" class="cf-value flex-1 p-2 border rounded-lg text-sm"><button type="button" onclick="router._removeCustomField(${i})" class="text-red-500 px-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')||'<p class="text-xs text-slate-400 text-center py-3">+ 항목 추가 버튼으로 사용자 정의 운영정보를 추가할 수 있습니다</p>'}</div>
-      </div>
-      
-      <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase tracking-widest">${pid?'매물 수정':'매물 등록'}</button>
-    </form>`, 'max-w-3xl');
-    
-    // 이미지 임시 저장 객체
     this._tempImages = [...p.images];
     this._tempMainImage = p.mainImage || 0;
-    this._tempCustomFields = [...p.customFields];
     
-    // 이미지 업로드 핸들러
+    openModal(pid?'✏️ 매물 수정':'🆕 매물 등록', `<form id="pf" class="space-y-4"><div class="grid grid-cols-2 gap-3"><input name="name" value="${p.name}" placeholder="숙소명" class="p-3 border rounded-xl font-bold" required><select name="group" class="p-3 border rounded-xl font-bold">${store.groups.map(g=>`<option ${p.group===g?'selected':''}>${g}</option>`).join('')}</select></div><input name="location" value="${p.location||''}" placeholder="위치" class="w-full p-3 border rounded-xl font-bold" required><input name="address" value="${p.address||''}" placeholder="상세주소" class="w-full p-3 border rounded-xl font-bold"><div class="grid grid-cols-2 gap-3"><div><label class="text-[10px] font-black text-blue-500">판매가 (1박)</label><input type="number" name="price" value="${p.price}" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1" required></div><div><label class="text-[10px] font-black text-slate-400">원가</label><input type="number" name="cost" value="${p.cost}" class="w-full p-3 border rounded-xl font-black text-slate-500 mt-1" required></div></div>
+    <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4"><p class="text-xs font-black text-blue-700 uppercase mb-3">📷 이미지 업로드 (다중, 각 10MB 이하)</p><input type="file" id="imgUpload" accept="image/*" multiple class="w-full p-3 border-2 border-dashed border-blue-300 rounded-xl bg-white font-bold text-sm cursor-pointer"><p class="text-[10px] text-slate-500 font-bold mt-2">💡 별표(⭐) 클릭 시 대표 이미지로 설정</p><div id="imgPreview" class="grid grid-cols-4 gap-2 mt-3"></div></div>
+    <textarea name="description" placeholder="세부사항" class="w-full p-3 border rounded-xl h-24 font-bold">${p.description||''}</textarea>
+    <div class="bg-slate-50 p-4 rounded-xl space-y-3"><p class="text-xs font-black text-slate-400 uppercase">기본 운영 정보</p><div class="grid grid-cols-2 gap-3"><div><label class="text-[10px] font-black">담당매니저 🔔</label><select name="manager" class="w-full p-3 border rounded-xl font-bold mt-1"><option value="">-</option>${store.users.filter(u=>u.role==='Manager').map(u=>`<option value="${u.id}" ${p.manager===u.id?'selected':''}>${u.name}</option>`).join('')}</select></div><div><label class="text-[10px] font-black">수리여부</label><input name="repair" value="${p.repair||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black">입주청소</label><input name="cleaning" value="${p.cleaning||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black">도시가스</label><input name="gas" value="${p.gas||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black">인터넷</label><input name="internet" value="${p.internet||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black">분리수거일</label><input name="recycleDay" value="${p.recycleDay||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black">비밀번호</label><input name="password" value="${p.password||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black">관리실</label><input name="office" value="${p.office||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div class="col-span-2"><label class="text-[10px] font-black">이용안내 링크</label><input name="guide" value="${p.guide||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div></div></div>
+    <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4"><div class="flex justify-between items-center mb-3"><p class="text-xs font-black text-amber-700 uppercase">📌 추가 운영 정보 (사용자 정의)</p><button type="button" onclick="router._addCustomField()" class="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-black">+ 항목 추가</button></div><div id="customFields" class="space-y-2">${p.customFields.map((cf,i)=>`<div class="flex gap-2 items-center bg-white p-2 rounded-lg" data-cf-idx="${i}"><input value="${cf.label}" placeholder="항목명" class="cf-label flex-1 p-2 border rounded-lg text-sm font-bold"><input value="${cf.value}" placeholder="내용" class="cf-value flex-1 p-2 border rounded-lg text-sm"><button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')||'<p class="text-xs text-slate-400 text-center py-3">+ 버튼으로 추가</p>'}</div></div>
+    <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">${pid?'매물 수정':'매물 등록'}</button></form>`, 'max-w-3xl');
+    
+    this._refreshImagePreview();
+    
     document.getElementById('imgUpload').onchange = async e => {
       const files = [...e.target.files];
       showLoading(true);
       try {
         for (const file of files) {
-          if (file.size > 10 * 1024 * 1024) {
-            toast(`${file.name}은 10MB를 초과합니다`, 'error');
-            continue;
-          }
-          const dataUrl = await store.uploadImage(file);
-          this._tempImages.push(dataUrl);
+          if (file.size > 10*1024*1024) { toast(`${file.name} 10MB 초과`,'error'); continue; }
+          const url = await store.uploadImage(file);
+          this._tempImages.push(url);
         }
         this._refreshImagePreview();
-        toast(`${files.length}개 이미지 추가됨`, 'success');
-      } catch(err) {
-        toast('업로드 실패: '+err.message, 'error');
-      } finally {
-        showLoading(false);
-        e.target.value = '';
-      }
+        toast(`${files.length}개 추가`,'success');
+      } catch(err) { toast('실패: '+err.message,'error'); }
+      finally { showLoading(false); e.target.value=''; }
     };
     
     document.getElementById('pf').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
-      // 이미지 정보
       d.images = this._tempImages;
       d.mainImage = this._tempMainImage;
-      d.image = this._tempImages[this._tempMainImage] || this._tempImages[0] || ''; // 기존 호환
-      // 커스텀 필드 수집
-      d.customFields = [...document.querySelectorAll('[data-cf-idx]')].map(el => ({
-        label: el.querySelector('.cf-label').value.trim(),
-        value: el.querySelector('.cf-value').value.trim()
-      })).filter(cf => cf.label);
-      
+      d.image = this._tempImages[this._tempMainImage] || this._tempImages[0] || '';
+      d.customFields = [...document.querySelectorAll('[data-cf-idx]')].map(el => ({label: el.querySelector('.cf-label').value.trim(), value: el.querySelector('.cf-value').value.trim()})).filter(cf => cf.label);
       if (pid) d.id = pid;
       const oldManager = pid ? store.prop(pid)?.manager : null;
-      
       showLoading(true);
       try {
         await store.upsertProp(d);
-        // 매니저 배정 알림
-        if (d.manager && d.manager !== oldManager) {
-          await store.notifyManagerAssignment(d.name, d.manager, !pid);
-        }
+        if (d.manager && d.manager !== oldManager) await store.notifyManagerAssignment(d.name, d.manager, !pid);
         toast(pid?'수정됨 (매니저 알림 발송)':'등록됨 (매니저 알림 발송)','success');
         closeModal();
         await this.renderAdminTab();
-      } catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
+      } catch(err) { toast('실패','error'); } finally { showLoading(false); }
     };
     lucide.createIcons();
   }
   
   _refreshImagePreview() {
-    const container = document.getElementById('imgPreview');
-    if (!container) return;
-    container.innerHTML = this._tempImages.map((img,i)=>`<div class="relative group"><img src="${img}" class="w-full h-24 object-cover rounded-lg border-2 ${this._tempMainImage===i?'border-amber-500 ring-2 ring-amber-200':'border-slate-200'}"><button type="button" onclick="router._setMainImage(${i})" class="absolute top-1 left-1 w-6 h-6 ${this._tempMainImage===i?'bg-amber-500':'bg-white/80'} rounded-full flex items-center justify-center text-xs">⭐</button><button type="button" onclick="router._removeImage(${i})" class="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs">×</button>${this._tempMainImage===i?'<span class="absolute bottom-1 left-1 right-1 text-[9px] font-black bg-amber-500 text-white px-1 py-0.5 rounded text-center">대표</span>':''}</div>`).join('');
+    const c = document.getElementById('imgPreview');
+    if (!c) return;
+    c.innerHTML = this._tempImages.map((img,i)=>`<div class="relative"><img src="${img}" class="w-full h-24 object-cover rounded-lg border-2 ${this._tempMainImage===i?'border-amber-500 ring-2 ring-amber-200':'border-slate-200'}"><button type="button" onclick="router._setMainImage(${i})" class="absolute top-1 left-1 w-6 h-6 ${this._tempMainImage===i?'bg-amber-500':'bg-white/80'} rounded-full text-xs">⭐</button><button type="button" onclick="router._removeImage(${i})" class="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs">×</button>${this._tempMainImage===i?'<span class="absolute bottom-1 left-1 right-1 text-[9px] font-black bg-amber-500 text-white px-1 rounded text-center">대표</span>':''}</div>`).join('') || '<p class="col-span-4 text-center text-xs text-slate-400 py-6">이미지 없음</p>';
   }
+  
   _setMainImage(i) { this._tempMainImage = i; this._refreshImagePreview(); }
-  _removeImage(i) {
-    this._tempImages.splice(i,1);
-    if (this._tempMainImage >= this._tempImages.length) this._tempMainImage = 0;
-    this._refreshImagePreview();
-  }
+  _removeImage(i) { this._tempImages.splice(i,1); if(this._tempMainImage>=this._tempImages.length)this._tempMainImage=0; this._refreshImagePreview(); }
+  
   _addCustomField() {
-    const container = document.getElementById('customFields');
-    const idx = container.querySelectorAll('[data-cf-idx]').length;
+    const c = document.getElementById('customFields');
+    const idx = c.querySelectorAll('[data-cf-idx]').length;
     const div = document.createElement('div');
     div.className = 'flex gap-2 items-center bg-white p-2 rounded-lg';
     div.setAttribute('data-cf-idx', idx);
-    div.innerHTML = `<input placeholder="항목명 (예: CCTV)" class="cf-label flex-1 p-2 border rounded-lg text-sm font-bold"><input placeholder="내용" class="cf-value flex-1 p-2 border rounded-lg text-sm"><button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
-    if (container.querySelector('p')) container.innerHTML = '';
-    container.appendChild(div);
+    div.innerHTML = `<input placeholder="항목명" class="cf-label flex-1 p-2 border rounded-lg text-sm font-bold"><input placeholder="내용" class="cf-value flex-1 p-2 border rounded-lg text-sm"><button type="button" onclick="this.parentElement.remove()" class="text-red-500 px-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+    if (c.querySelector('p')) c.innerHTML='';
+    c.appendChild(div);
     lucide.createIcons();
   }
-  _removeCustomField(i) {
-    document.querySelector(`[data-cf-idx="${i}"]`)?.remove();
-  }
-
+  
   async delProp(id) {
-    if (!confirm('관련 데이터가 영향받을 수 있습니다. 삭제?')) return;
+    if (!confirm('삭제?')) return;
     showLoading(true);
     try { await store.delProp(id); toast('삭제됨','success'); await this.renderAdminTab(); }
     catch(e) { toast('실패','error'); } finally { showLoading(false); }
   }
-
-   admSales(c) {
-    // 필터 상태 저장
-    const f = this._salesFilter || { mode: 'all', period: 'month', from: new Date(Date.now()-30*86400000).toISOString().split('T')[0], to: todayStr(), groupSel: '', propIds: [] };
-    
-    // 필터링 로직
-    let filteredBookings = store.bookings.filter(b => {
-      // 기간 필터
-      if (b.checkIn < f.from || b.checkIn > f.to) return false;
-      // 모드 필터
-      if (f.mode === 'group' && f.groupSel) {
-        const p = store.prop(b.propId);
-        if (!p || p.group !== f.groupSel) return false;
-      }
-      if (f.mode === 'selected' && f.propIds.length) {
-        if (!f.propIds.includes(b.propId)) return false;
-      }
-      return true;
-    });
-    
-    const byProp = store.properties.map(p=>({p, t:filteredBookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+(+b.price||0),0), n:filteredBookings.filter(b=>b.propId===p.id).length}));
+  // ===== 매출 관리 =====
+  admSales(c) {
+    const byProp = store.properties.map(p=>({p,t:store.bookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+(+b.price||0),0),n:store.bookings.filter(b=>b.propId===p.id).length}));
     const byGroup = {};
-    store.groups.forEach(g=>byGroup[g] = store.properties.filter(p=>p.group===g).reduce((s,p)=>s+filteredBookings.filter(b=>b.propId===p.id).reduce((ss,b)=>ss+b.price,0),0));
-    const total = filteredBookings.reduce((s,b)=>s+(+b.price||0),0);
-    
-    c.innerHTML = `<h2 class="text-3xl font-black mb-6">💰 매출 관리</h2>
-      <div class="bg-white p-4 rounded-2xl border mb-6">
-        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">📊 매출 필터</p>
-        <div class="flex gap-2 flex-wrap items-center">
-          <select id="sFilterMode" class="p-3 border rounded-xl font-bold text-sm">
-            <option value="all" ${f.mode==='all'?'selected':''}>전체</option>
-            <option value="group" ${f.mode==='group'?'selected':''}>그룹별</option>
-            <option value="selected" ${f.mode==='selected'?'selected':''}>선택매물</option>
-          </select>
-          <select id="sFilterGroup" class="p-3 border rounded-xl font-bold text-sm ${f.mode==='group'?'':'hidden'}">
-            <option value="">그룹 선택</option>
-            ${store.groups.map(g=>`<option value="${g}" ${f.groupSel===g?'selected':''}>${g}</option>`).join('')}
-          </select>
-          <select id="sPeriod" class="p-3 border rounded-xl font-bold text-sm">
-            <option value="day" ${f.period==='day'?'selected':''}>일</option>
-            <option value="week" ${f.period==='week'?'selected':''}>주</option>
-            <option value="month" ${f.period==='month'?'selected':''}>월</option>
-            <option value="year" ${f.period==='year'?'selected':''}>년</option>
-            <option value="custom" ${f.period==='custom'?'selected':''}>사용자 지정</option>
-          </select>
-          <input type="date" id="sFrom" value="${f.from}" class="p-3 border rounded-xl font-bold text-sm">
-          <span class="text-slate-400 font-black">~</span>
-          <input type="date" id="sTo" value="${f.to}" class="p-3 border rounded-xl font-bold text-sm">
-          <button onclick="router.applySalesFilter()" class="bg-slate-900 text-white px-5 py-3 rounded-xl font-black text-sm">적용</button>
-          <button onclick="router.resetSalesFilter()" class="bg-slate-100 text-slate-600 px-4 py-3 rounded-xl font-black text-sm">초기화</button>
-        </div>
-        ${f.mode==='selected'?`<div class="mt-3 p-3 bg-blue-50 rounded-xl"><p class="text-[10px] font-black text-blue-600 uppercase mb-2">매물 선택 (체크박스)</p><div class="grid grid-cols-2 md:grid-cols-4 gap-2">${store.properties.map(p=>`<label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer"><input type="checkbox" class="prop-sel" value="${p.id}" ${f.propIds.includes(p.id)?'checked':''}><span class="text-xs font-bold">${p.name}</span></label>`).join('')}</div></div>`:''}
-      </div>
-      
-      <div class="grid grid-cols-4 gap-4 mb-6">
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-5 rounded-2xl"><p class="text-[10px] font-black uppercase opacity-70">총매출 (${filteredBookings.length}건)</p><p class="text-2xl font-black mt-2">${fmt(total)}</p></div>
-        ${Object.entries(byGroup).slice(0,3).map(([g,v])=>`<div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${g}</p><p class="text-xl font-black text-blue-600 mt-2">${fmt(v)}</p></div>`).join('')}
-      </div>
-      
-      <div class="bg-white rounded-2xl border overflow-hidden mb-6">
-        <div class="p-5 border-b bg-slate-50"><h3 class="font-black text-sm uppercase tracking-widest">숙소별 매출 순위</h3></div>
-        <table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-5 py-3 text-left">숙소</th><th class="px-5 py-3 text-left">그룹</th><th class="px-5 py-3 text-right">예약수</th><th class="px-5 py-3 text-right">총매출</th><th class="px-5 py-3 text-right">평균단가</th></tr></thead>
-        <tbody class="text-sm divide-y">${byProp.sort((a,b)=>b.t-a.t).map(r=>`<tr class="hover:bg-blue-50/30"><td class="px-5 py-4 font-black">${r.p.name}</td><td class="px-5 py-4 text-xs"><span class="px-2 py-0.5 bg-slate-100 rounded font-black">${r.p.group||'-'}</span></td><td class="px-5 py-4 text-right font-bold">${r.n}건</td><td class="px-5 py-4 text-right font-black text-blue-600">${fmt(r.t)}</td><td class="px-5 py-4 text-right font-bold text-slate-500">${fmt(r.n?Math.round(r.t/r.n):0)}</td></tr>`).join('')}</tbody></table>
-      </div>
-      
-      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📈 기간별 매출 차트 (${f.period === 'day' ? '일별' : f.period === 'week' ? '주별' : f.period === 'year' ? '연별' : '월별'})</h3><canvas id="sChart" height="100"></canvas></div>`;
-    
+    store.groups.forEach(g=>byGroup[g]=store.properties.filter(p=>p.group===g).reduce((s,p)=>s+store.bookings.filter(b=>b.propId===p.id).reduce((ss,b)=>ss+b.price,0),0));
+    const total = store.bookings.reduce((s,b)=>s+(+b.price||0),0);
+    c.innerHTML = `<h2 class="text-3xl font-black mb-6">💰 매출 관리</h2><div class="grid grid-cols-4 gap-4 mb-6"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-5 rounded-2xl"><p class="text-[10px] font-black uppercase opacity-70">총매출</p><p class="text-2xl font-black mt-2">${fmt(total)}</p></div>${Object.entries(byGroup).map(([g,v])=>`<div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${g}</p><p class="text-xl font-black text-blue-600 mt-2">${fmt(v)}</p></div>`).join('')}</div><div class="bg-white rounded-2xl border overflow-hidden mb-6"><div class="p-5 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">숙소별 매출 순위</h3></div><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-5 py-3 text-left">숙소</th><th class="px-5 py-3 text-right">예약수</th><th class="px-5 py-3 text-right">총매출</th><th class="px-5 py-3 text-right">평균단가</th></tr></thead><tbody class="text-sm divide-y">${byProp.sort((a,b)=>b.t-a.t).map(r=>`<tr class="hover:bg-blue-50/30"><td class="px-5 py-4 font-black">${r.p.name}</td><td class="px-5 py-4 text-right font-bold">${r.n}건</td><td class="px-5 py-4 text-right font-black text-blue-600">${fmt(r.t)}</td><td class="px-5 py-4 text-right font-bold text-slate-500">${fmt(r.n?Math.round(r.t/r.n):0)}</td></tr>`).join('')}</tbody></table></div><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">기간별 매출</h3><canvas id="sChart" height="100"></canvas></div>`;
     setTimeout(()=>{
-      const buckets = {};
-      filteredBookings.forEach(b => {
-        let key;
-        if (f.period === 'day') key = b.checkIn;
-        else if (f.period === 'year') key = b.checkIn.slice(0,4);
-        else if (f.period === 'week') {
-          const d = new Date(b.checkIn);
-          const wn = Math.ceil((d.getDate() + new Date(d.getFullYear(),d.getMonth(),1).getDay())/7);
-          key = `${b.checkIn.slice(0,7)}-W${wn}`;
-        }
-        else key = b.checkIn.slice(0,7);
-        buckets[key] = (buckets[key]||0) + b.price;
-      });
-      const k = Object.keys(buckets).sort();
-      new Chart(document.getElementById('sChart'),{type:'line',data:{labels:k,datasets:[{label:'매출',data:k.map(x=>buckets[x]),borderColor:'#2563eb',backgroundColor:'#2563eb30',fill:true,tension:0.4}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+      const months={};store.bookings.forEach(b=>{const m=b.checkIn.slice(0,7);months[m]=(months[m]||0)+b.price});
+      const k=Object.keys(months).sort();
+      new Chart(document.getElementById('sChart'),{type:'line',data:{labels:k,datasets:[{label:'매출',data:k.map(x=>months[x]),borderColor:'#2563eb',backgroundColor:'#2563eb30',fill:true,tension:0.4}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
     },100);
-    
-    // 모드 변경 시 그룹 select 표시/숨김
-    setTimeout(()=>{
-      const modeSel = document.getElementById('sFilterMode');
-      if(modeSel) modeSel.onchange = () => {
-        this._salesFilter = { ...f, mode: modeSel.value };
-        this.renderAdminTab();
-      };
-    },50);
   }
 
-  applySalesFilter() {
-    const mode = document.getElementById('sFilterMode')?.value || 'all';
-    const period = document.getElementById('sPeriod')?.value || 'month';
-    const from = document.getElementById('sFrom')?.value;
-    const to = document.getElementById('sTo')?.value;
-    const groupSel = document.getElementById('sFilterGroup')?.value || '';
-    const propIds = [...document.querySelectorAll('.prop-sel:checked')].map(x=>+x.value);
-    this._salesFilter = { mode, period, from, to, groupSel, propIds };
-    this.renderAdminTab();
-    toast('필터 적용됨', 'success');
-  }
-
-  resetSalesFilter() {
-    this._salesFilter = null;
-    this.renderAdminTab();
-    toast('필터 초기화', 'info');
-  }
-
+  // ===== 지출 관리 (엑셀 + 기간 필터) =====
   admExpenses(c) {
-    const mode = this.expenseMode;
     if (!this._expFilter) {
       const now = new Date();
-      this._expFilter = { period: 'month', from: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, to: todayStr() };
+      this._expFilter = { period:'month', from:`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`, to:todayStr() };
     }
     const f = this._expFilter;
-    const periodLabel = { day: '일별', week: '주별', month: '월별', custom: '사용자 지정' }[f.period];
-    const titleLabel = f.period === 'month' ? `${f.from.slice(0,7).replace('-','년 ')}월 지출 내역` : `${f.from} ~ ${f.to} 지출 내역`;
-    
-    c.innerHTML = `<div class="flex justify-between items-center mb-4">
-      <h2 class="text-3xl font-black">💳 지출 관리</h2>
-      <div class="flex gap-2 flex-wrap">
-        <div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.expenseMode='integrated';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='integrated'?'bg-white shadow':'text-slate-500'}">통합</button><button onclick="router.expenseMode='individual';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='individual'?'bg-white shadow':'text-slate-500'}">개별</button></div>
-        <button onclick="router.showCatMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 카테고리</button>
-        <button onclick="router.exportExpensesExcel()" class="bg-green-600 text-white px-5 py-3 rounded-xl font-black text-sm">📥 엑셀 내보내기</button>
-        <label class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm cursor-pointer">📤 엑셀 불러오기<input type="file" id="expImport" accept=".xlsx,.xls" class="hidden"></label>
-        <button onclick="router.showExpenseForm()" class="bg-red-500 text-white px-5 py-3 rounded-xl font-black text-sm">+ 지출 추가</button>
-      </div>
-    </div>
-    
-    <div class="bg-white p-4 rounded-2xl border mb-4">
-      <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">📅 기간 필터</p>
-      <div class="flex gap-2 flex-wrap items-center">
-        <select id="expPeriod" class="p-3 border rounded-xl font-bold text-sm">
-          <option value="day" ${f.period==='day'?'selected':''}>일</option>
-          <option value="week" ${f.period==='week'?'selected':''}>주</option>
-          <option value="month" ${f.period==='month'?'selected':''}>월</option>
-          <option value="custom" ${f.period==='custom'?'selected':''}>특정 기간</option>
-        </select>
-        <input type="date" id="expFrom" value="${f.from}" class="p-3 border rounded-xl font-bold text-sm">
-        <span class="text-slate-400 font-black">~</span>
-        <input type="date" id="expTo" value="${f.to}" class="p-3 border rounded-xl font-bold text-sm">
-        <button onclick="router.applyExpFilter()" class="bg-slate-900 text-white px-5 py-3 rounded-xl font-black text-sm">적용</button>
-        <button onclick="router.expPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
-        <button onclick="router.expNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
-      </div>
-    </div>
-    
-    <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700 flex items-center gap-2"><i data-lucide="link" class="w-4 h-4"></i>🔗 인터넷비는 기타관리와 자동 연동</div>
-    
-    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl mb-4 flex justify-between items-center">
-      <div>
-        <p class="text-xs font-black uppercase opacity-70">${periodLabel} 보기</p>
-        <h3 class="text-2xl font-black mt-1">📊 ${titleLabel}</h3>
-      </div>
-      <p class="text-3xl font-black text-amber-400">${fmt(this._getFilteredExpenses().reduce((s,e)=>s+e.amount,0))}</p>
-    </div>
-    
+    const titleLabel = f.period==='month'?`${f.from.slice(0,7).replace('-','년 ')}월 지출`:`${f.from} ~ ${f.to}`;
+    c.innerHTML = `<div class="flex justify-between items-center mb-4 flex-wrap gap-3"><h2 class="text-3xl font-black">💳 지출 관리</h2><div class="flex gap-2 flex-wrap"><div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.expenseMode='integrated';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.expenseMode==='integrated'?'bg-white shadow':'text-slate-500'}">통합</button><button onclick="router.expenseMode='individual';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.expenseMode==='individual'?'bg-white shadow':'text-slate-500'}">개별</button></div><button onclick="router.showCatMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 카테고리</button><button onclick="router.exportExpensesExcel()" class="bg-green-600 text-white px-5 py-3 rounded-xl font-black text-sm">📥 엑셀 내보내기</button><label class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm cursor-pointer">📤 엑셀 불러오기<input type="file" id="expImport" accept=".xlsx,.xls" class="hidden"></label><button onclick="router.showExpenseForm()" class="bg-red-500 text-white px-5 py-3 rounded-xl font-black text-sm">+ 지출</button></div></div>
+    <div class="bg-white p-4 rounded-2xl border mb-4"><p class="text-[10px] font-black text-slate-400 uppercase mb-3">📅 기간 필터</p><div class="flex gap-2 flex-wrap items-center"><select id="expPeriod" class="p-3 border rounded-xl font-bold text-sm"><option value="day" ${f.period==='day'?'selected':''}>일</option><option value="week" ${f.period==='week'?'selected':''}>주</option><option value="month" ${f.period==='month'?'selected':''}>월</option><option value="custom" ${f.period==='custom'?'selected':''}>특정 기간</option></select><input type="date" id="expFrom" value="${f.from}" class="p-3 border rounded-xl font-bold text-sm"><span class="text-slate-400 font-black">~</span><input type="date" id="expTo" value="${f.to}" class="p-3 border rounded-xl font-bold text-sm"><button onclick="router.applyExpFilter()" class="bg-slate-900 text-white px-5 py-3 rounded-xl font-black text-sm">적용</button><button onclick="router.expPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><button onclick="router.expNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button></div></div>
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700"><i data-lucide="link" class="w-4 h-4 inline"></i> 🔗 인터넷비는 기타관리와 자동 연동</div>
+    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl mb-4 flex justify-between items-center"><div><h3 class="text-2xl font-black">📊 ${titleLabel}</h3></div><p class="text-3xl font-black text-amber-400">${fmt(this._getFilteredExpenses().reduce((s,e)=>s+e.amount,0))}</p></div>
     <div id="exp-body"></div>`;
-    
-    if (mode === 'integrated') this.admExpIntegrated(); else this.admExpIndividual();
-    
+    if (this.expenseMode === 'integrated') this.admExpIntegrated(); else this.admExpIndividual();
     document.getElementById('expImport').onchange = e => this.importExpensesExcel(e.target.files[0]);
     lucide.createIcons();
   }
-
+  
   _getFilteredExpenses() {
     const f = this._expFilter || {};
-    return store.expenses.filter(e => {
-      if (!e.date) return false;
-      return e.date >= f.from && e.date <= f.to;
-    });
+    return store.expenses.filter(e => e.date && e.date >= f.from && e.date <= f.to);
   }
-
+  
   applyExpFilter() {
     const period = document.getElementById('expPeriod').value;
     let from = document.getElementById('expFrom').value;
     let to = document.getElementById('expTo').value;
-    const now = new Date();
     if (period === 'day') { from = to = todayStr(); }
     else if (period === 'week') {
-      const d = new Date();
-      const day = d.getDay();
-      const diff = d.getDate() - day;
+      const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day;
       from = new Date(d.setDate(diff)).toISOString().split('T')[0];
       to = new Date(d.setDate(diff+6)).toISOString().split('T')[0];
-    }
-    else if (period === 'month') {
+    } else if (period === 'month') {
       const fd = new Date(from || todayStr());
       from = `${fd.getFullYear()}-${String(fd.getMonth()+1).padStart(2,'0')}-01`;
       const last = new Date(fd.getFullYear(), fd.getMonth()+1, 0);
@@ -750,29 +518,25 @@ class Router {
     this._expFilter = { period, from, to };
     this.renderAdminTab();
   }
-
+  
   expPrevMonth() {
-    const f = this._expFilter;
-    const d = new Date(f.from);
+    const f = this._expFilter; const d = new Date(f.from);
     d.setMonth(d.getMonth() - 1);
     f.from = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
     const last = new Date(d.getFullYear(), d.getMonth()+1, 0);
     f.to = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
-    f.period = 'month';
-    this.renderAdminTab();
+    f.period = 'month'; this.renderAdminTab();
   }
-
+  
   expNextMonth() {
-    const f = this._expFilter;
-    const d = new Date(f.from);
+    const f = this._expFilter; const d = new Date(f.from);
     d.setMonth(d.getMonth() + 1);
     f.from = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
     const last = new Date(d.getFullYear(), d.getMonth()+1, 0);
     f.to = `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
-    f.period = 'month';
-    this.renderAdminTab();
+    f.period = 'month'; this.renderAdminTab();
   }
-
+  
   admExpIntegrated() {
     const body = document.getElementById('exp-body');
     const expenses = this._getFilteredExpenses();
@@ -795,18 +559,18 @@ class Router {
     html += `</tbody></table></div>`;
     body.innerHTML = html;
   }
-
+  
   admExpIndividual() {
     const body = document.getElementById('exp-body');
     const expenses = this._getFilteredExpenses();
     body.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>{
       const list = expenses.filter(e=>e.propId===p.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
       const total = list.reduce((s,e)=>s+e.amount,0);
-      return `<div class="bg-white p-5 rounded-2xl border"><div class="flex items-center gap-3 mb-4 pb-4 border-b"><img src="${p.image||(p.images?.[p.mainImage||0])||''}" class="w-12 h-12 rounded-xl object-cover"><div class="flex-1 min-w-0"><p class="font-black truncate">${p.name}</p><p class="text-xs text-red-500 font-black">${fmt(total)}</p></div><button onclick="router.showExpenseForm(${p.id})" class="w-8 h-8 bg-blue-600 text-white rounded-lg text-xs font-black">+</button></div><div class="space-y-2 max-h-64 overflow-y-auto scrollbar">${list.length?list.map(e=>{const linked=e.syncKey?.startsWith('net_');return `<div class="p-2 ${linked?'bg-blue-50':'bg-slate-50'} rounded-lg flex items-center gap-2 text-xs"><div class="flex-1 min-w-0"><p class="font-black truncate">${e.category} ${linked?'🔗':''}</p><p class="text-[10px] text-slate-400 font-bold">${e.date} · ${e.memo||'-'}</p></div><span class="text-red-500 font-black">${fmt(e.amount)}</span><button onclick="router.delExpense(${e.id})" class="text-slate-300 hover:text-red-500"><i data-lucide="x" class="w-3 h-3"></i></button></div>`}).join(''):'<p class="text-xs text-slate-400 text-center py-4">기간 내 내역 없음</p>'}</div></div>`;
+      return `<div class="bg-white p-5 rounded-2xl border"><div class="flex items-center gap-3 mb-4 pb-4 border-b"><img src="${p.image||(p.images?.[p.mainImage||0])||'https://via.placeholder.com/60'}" class="w-12 h-12 rounded-xl object-cover"><div class="flex-1 min-w-0"><p class="font-black truncate">${p.name}</p><p class="text-xs text-red-500 font-black">${fmt(total)}</p></div><button onclick="router.showExpenseForm(${p.id})" class="w-8 h-8 bg-blue-600 text-white rounded-lg text-xs font-black">+</button></div><div class="space-y-2 max-h-64 overflow-y-auto scrollbar">${list.length?list.map(e=>{const linked=e.syncKey?.startsWith('net_');return `<div class="p-2 ${linked?'bg-blue-50':'bg-slate-50'} rounded-lg flex items-center gap-2 text-xs"><div class="flex-1 min-w-0"><p class="font-black truncate">${e.category} ${linked?'🔗':''}</p><p class="text-[10px] text-slate-400 font-bold">${e.date} · ${e.memo||'-'}</p></div><span class="text-red-500 font-black">${fmt(e.amount)}</span><button onclick="router.delExpense(${e.id})" class="text-slate-300 hover:text-red-500"><i data-lucide="x" class="w-3 h-3"></i></button></div>`}).join(''):'<p class="text-xs text-slate-400 text-center py-4">기간 내 내역 없음</p>'}</div></div>`;
     }).join('')}</div>`;
     lucide.createIcons();
   }
-
+  
   exportExpensesExcel() {
     const expenses = this._getFilteredExpenses();
     const f = this._expFilter;
@@ -825,7 +589,7 @@ class Router {
     XLSX.writeFile(wb, filename);
     toast(`📥 ${filename} 다운로드 완료`, 'success');
   }
-
+  
   async importExpensesExcel(file) {
     if (!file) return;
     if (!confirm('엑셀 파일의 지출 내역을 추가합니다. 계속하시겠습니까?')) return;
@@ -854,51 +618,12 @@ class Router {
       }
       toast(`✅ ${added}건 추가, ${failed}건 실패`, added ? 'success' : 'error');
       await this.renderAdminTab();
-    } catch(e) {
-      toast('엑셀 읽기 실패: '+e.message, 'error');
-    } finally { showLoading(false); }
+    } catch(e) { toast('엑셀 읽기 실패: '+e.message, 'error'); }
+    finally { showLoading(false); }
   }
 
-  admExpIntegrated() {
-    const body = document.getElementById('exp-body');
-    let html = `<div class="bg-white rounded-2xl border overflow-x-auto"><table class="w-full min-w-[900px]"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">No.</th><th class="px-4 py-3 text-left">숙소</th>${store.majorCats.map(mc=>`<th class="px-4 py-3 text-right" colspan="${(store.subCats[mc]||[]).length+1}" style="background:${mc==='초기투자지출'?'#fef3c7':mc==='고정지출'?'#dbeafe':'#fee2e2'}">${mc}</th>`).join('')}<th class="px-4 py-3 text-right bg-slate-900 text-white">총합</th></tr><tr><th></th><th></th>${store.majorCats.map(mc=>(store.subCats[mc]||[]).map(sc=>`<th class="px-3 py-2 text-right text-[9px]">${sc}${sc==='인터넷비'?' 🔗':''}</th>`).join('')+`<th class="px-3 py-2 text-right text-[9px] font-black">소계</th>`).join('')}<th></th></tr></thead><tbody class="text-xs divide-y">`;
-    store.properties.forEach((p,idx)=>{
-      let total = 0;
-      html += `<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-black">${idx+1}</td><td class="px-4 py-3 font-black whitespace-nowrap">${p.name}</td>`;
-      store.majorCats.forEach(mc=>{
-        let mcSum = 0;
-        (store.subCats[mc]||[]).forEach(sc=>{
-          const v = store.expenses.filter(e=>e.propId===p.id&&e.majorCat===mc&&e.category===sc).reduce((s,e)=>s+e.amount,0);
-          mcSum += v;
-          html += `<td class="px-3 py-3 text-right font-bold ${sc==='인터넷비'&&v>0?'text-blue-600':''}">${v?fmt(v):'-'}</td>`;
-        });
-        html += `<td class="px-3 py-3 text-right font-black" style="background:${mc==='초기투자지출'?'#fef9e7':mc==='고정지출'?'#eff6ff':'#fef2f2'}">${mcSum?fmt(mcSum):'-'}</td>`;
-        total += mcSum;
-      });
-      html += `<td class="px-4 py-3 text-right font-black bg-slate-900 text-white">${fmt(total)}</td></tr>`;
-    });
-    html += `</tbody></table></div>`;
-    body.innerHTML = html;
-  }
-
-  admExpIndividual() {
-    const body = document.getElementById('exp-body');
-    body.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>{
-      const list = store.expenses.filter(e=>e.propId===p.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-      const total = list.reduce((s,e)=>s+e.amount,0);
-      return `<div class="bg-white p-5 rounded-2xl border"><div class="flex items-center gap-3 mb-4 pb-4 border-b"><img src="${p.image}" class="w-12 h-12 rounded-xl object-cover"><div class="flex-1 min-w-0"><p class="font-black truncate">${p.name}</p><p class="text-xs text-red-500 font-black">${fmt(total)}</p></div><button onclick="router.showExpenseForm(${p.id})" class="w-8 h-8 bg-blue-600 text-white rounded-lg text-xs font-black">+</button></div><div class="space-y-2 max-h-64 overflow-y-auto scrollbar">${list.length?list.map(e=>{const linked=e.syncKey?.startsWith('net_');return `<div class="p-2 ${linked?'bg-blue-50':'bg-slate-50'} rounded-lg flex items-center gap-2 text-xs"><div class="flex-1 min-w-0"><p class="font-black truncate">${e.category} ${linked?'🔗':''}</p><p class="text-[10px] text-slate-400 font-bold">${e.date} · ${e.memo||'-'}</p></div><span class="text-red-500 font-black">${fmt(e.amount)}</span><button onclick="router.delExpense(${e.id})" class="text-slate-300 hover:text-red-500"><i data-lucide="x" class="w-3 h-3"></i></button></div>`}).join(''):'<p class="text-xs text-slate-400 text-center py-4">없음</p>'}</div></div>`;
-    }).join('')}</div>`;
-    lucide.createIcons();
-  }
   showCatMgr() {
-    openModal('📁 지출 카테고리 관리', `
-      <div class="space-y-4">${store.majorCats.map((mc,i)=>`
-        <div class="bg-slate-50 p-4 rounded-2xl"><div class="flex items-center gap-2 mb-3"><span class="font-black text-lg flex-1">${mc}</span><button onclick="router.delMajorCat(${i},'${mc}')" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
-          <div class="flex flex-wrap gap-2 mb-2">${(store.subCats[mc]||[]).map((sc,j)=>`<span class="inline-flex items-center gap-1 bg-white px-3 py-1.5 rounded-lg text-xs font-bold border">${sc}<button onclick="router.delSubCat('${mc}',${j})" class="text-red-400">×</button></span>`).join('')}</div>
-          <form onsubmit="router.addSubCat(event,'${mc}')"><div class="flex gap-2"><input name="s" placeholder="소분류 추가" class="flex-1 p-2 border rounded-lg text-sm"><button class="bg-blue-600 text-white px-3 rounded-lg text-xs font-black">+</button></div></form>
-        </div>`).join('')}
-      </div>
-      <form onsubmit="router.addMajorCat(event)" class="mt-4 pt-4 border-t"><div class="flex gap-2"><input name="m" placeholder="새 대분류" class="flex-1 p-3 border rounded-xl font-bold"><button class="bg-slate-900 text-white px-5 rounded-xl font-black">대분류 추가</button></div></form>`);
+    openModal('📁 지출 카테고리 관리', `<div class="space-y-4">${store.majorCats.map((mc,i)=>`<div class="bg-slate-50 p-4 rounded-2xl"><div class="flex items-center gap-2 mb-3"><span class="font-black text-lg flex-1">${mc}</span><button onclick="router.delMajorCat(${i},'${mc}')" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div><div class="flex flex-wrap gap-2 mb-2">${(store.subCats[mc]||[]).map((sc,j)=>`<span class="inline-flex items-center gap-1 bg-white px-3 py-1.5 rounded-lg text-xs font-bold border">${sc}<button onclick="router.delSubCat('${mc}',${j})" class="text-red-400">×</button></span>`).join('')}</div><form onsubmit="router.addSubCat(event,'${mc}')"><div class="flex gap-2"><input name="s" placeholder="소분류 추가" class="flex-1 p-2 border rounded-lg text-sm"><button class="bg-blue-600 text-white px-3 rounded-lg text-xs font-black">+</button></div></form></div>`).join('')}</div><form onsubmit="router.addMajorCat(event)" class="mt-4 pt-4 border-t"><div class="flex gap-2"><input name="m" placeholder="새 대분류" class="flex-1 p-3 border rounded-xl font-bold"><button class="bg-slate-900 text-white px-5 rounded-xl font-black">대분류 추가</button></div></form>`);
     lucide.createIcons();
   }
   async addMajorCat(e){e.preventDefault();const v=e.target.m.value.trim();if(v&&!store.majorCats.includes(v)){store.majorCats.push(v);store.subCats[v]=[];await API.setAll('majorCats',store.majorCats);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}}
@@ -907,17 +632,7 @@ class Router {
   async delSubCat(mc,j){store.subCats[mc].splice(j,1);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}
 
   showExpenseForm(propId=null) {
-    openModal('💳 지출 등록', `<form id="ef" class="space-y-4">
-      <select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}" ${propId==p.id?'selected':''}>${p.name}</option>`).join('')}</select>
-      <div class="grid grid-cols-2 gap-3">
-        <select name="majorCat" id="mcSel" class="p-3 border rounded-xl font-bold" required onchange="document.getElementById('scSel').innerHTML=(${JSON.stringify(store.subCats)})[this.value].map(x=>'<option>'+x+'</option>').join('')">${store.majorCats.map(m=>`<option>${m}</option>`).join('')}</select>
-        <select name="category" id="scSel" class="p-3 border rounded-xl font-bold" required>${(store.subCats[store.majorCats[0]]||[]).map(s=>`<option>${s}</option>`).join('')}</select>
-      </div>
-      <input type="date" name="date" value="${todayStr()}" class="w-full p-3 border rounded-xl font-bold" required>
-      <input type="number" name="amount" placeholder="금액" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required>
-      <input type="text" name="memo" placeholder="상세 내역" class="w-full p-3 border rounded-xl font-bold">
-      <button class="w-full bg-red-500 text-white py-4 rounded-xl font-black uppercase">지출 등록</button>
-    </form>`, 'max-w-xl');
+    openModal('💳 지출 등록', `<form id="ef" class="space-y-4"><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}" ${propId==p.id?'selected':''}>${p.name}</option>`).join('')}</select><div class="grid grid-cols-2 gap-3"><select name="majorCat" id="mcSel" class="p-3 border rounded-xl font-bold" required onchange="document.getElementById('scSel').innerHTML=(${JSON.stringify(store.subCats)})[this.value].map(x=>'<option>'+x+'</option>').join('')">${store.majorCats.map(m=>`<option>${m}</option>`).join('')}</select><select name="category" id="scSel" class="p-3 border rounded-xl font-bold" required>${(store.subCats[store.majorCats[0]]||[]).map(s=>`<option>${s}</option>`).join('')}</select></div><input type="date" name="date" value="${todayStr()}" class="w-full p-3 border rounded-xl font-bold" required><input type="number" name="amount" placeholder="금액" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required><input type="text" name="memo" placeholder="상세 내역" class="w-full p-3 border rounded-xl font-bold"><button class="w-full bg-red-500 text-white py-4 rounded-xl font-black uppercase">지출 등록</button></form>`, 'max-w-xl');
     document.getElementById('ef').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -926,7 +641,7 @@ class Router {
       catch(err) { toast('실패','error'); } finally { showLoading(false); }
     };
   }
-
+  
   async delExpense(id) {
     if (!confirm('삭제?')) return;
     showLoading(true);
@@ -934,26 +649,11 @@ class Router {
     catch(e) { toast('실패','error'); } finally { showLoading(false); }
   }
 
+  // ===== 예약 관리 (월 자유 이동) =====
   admBookings(c) {
-    if (!this._bkDate) this._bkDate = new Date();
     const cur = this._bkDate;
     const year = cur.getFullYear(), month = cur.getMonth();
-    
-    c.innerHTML = `<div class="flex justify-between items-center mb-6">
-      <h2 class="text-3xl font-black">📅 예약 관리</h2>
-      <div class="flex gap-2 items-center">
-        <button onclick="router.bkPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
-        <h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3>
-        <button onclick="router.bkNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
-        <button onclick="router.bkToday()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button>
-        <div class="bg-slate-100 rounded-xl p-1 flex ml-2">
-          <button onclick="router.bkMode='month';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='month'?'bg-white shadow':'text-slate-500'}">월별 전체</button>
-          <button onclick="router.bkMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='list'?'bg-white shadow':'text-slate-500'}">개별 보기</button>
-        </div>
-      </div>
-    </div>
-    <div id="bk-body"></div>`;
-    
+    c.innerHTML = `<div class="flex justify-between items-center mb-6 flex-wrap gap-3"><h2 class="text-3xl font-black">📅 예약 관리</h2><div class="flex gap-2 items-center"><button onclick="router.bkPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router.bkNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button onclick="router.bkToday()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button><div class="bg-slate-100 rounded-xl p-1 flex ml-2"><button onclick="router.bkMode='month';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='month'?'bg-white shadow':'text-slate-500'}">월별 전체</button><button onclick="router.bkMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='list'?'bg-white shadow':'text-slate-500'}">개별 보기</button></div></div></div><div id="bk-body"></div>`;
     if (this.bkMode === 'list') {
       document.getElementById('bk-body').innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>`<div class="bg-white p-4 rounded-2xl border"><h4 class="font-black mb-3">${p.name}</h4>${buildCalendar(year, month, p.id, 'router.onCalendarClick')}</div>`).join('')}</div>`;
     } else {
@@ -973,137 +673,53 @@ class Router {
     }
     lucide.createIcons();
   }
-
+  
   bkPrevMonth() { this._bkDate.setMonth(this._bkDate.getMonth()-1); this.renderAdminTab(); }
   bkNextMonth() { this._bkDate.setMonth(this._bkDate.getMonth()+1); this.renderAdminTab(); }
   bkToday() { this._bkDate = new Date(); this.renderAdminTab(); }
 
+  // ===== 통계/보고서 (초기투자 제외 기본) =====
   admStats(c) {
     const rev = store.bookings.reduce((s,b)=>s+(+b.price||0),0);
     const costAll = store.expenses.reduce((s,e)=>s+(+e.amount||0),0);
     const costInit = store.expenses.filter(e=>e.majorCat==='초기투자지출').reduce((s,e)=>s+(+e.amount||0),0);
-    const costNoInit = costAll - costInit; // 초기투자지출 제외
+    const costNoInit = costAll - costInit;
     const showAll = this._statsShowAll || false;
     const cost = showAll ? costAll : costNoInit;
     
-    c.innerHTML = `<div class="flex justify-between items-center mb-6">
-      <h2 class="text-3xl font-black">📊 통계 & 보고서</h2>
-      <button onclick="router.genReport()" class="bg-amber-500 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg">📝 AI 보고서 생성</button>
-    </div>
-    
-    <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 mb-4 flex items-center justify-between">
-      <div>
-        <p class="text-sm font-black text-amber-700">💡 통계 기준: <b>${showAll?'초기투자지출 포함':'초기투자지출 제외'}</b></p>
-        <p class="text-xs text-amber-600 font-bold mt-1">리모델링·가구구입 등 일회성 비용은 운영 통계에서 ${showAll?'포함되어':'제외되어'} 있습니다</p>
-      </div>
-      <button onclick="router._statsShowAll=!router._statsShowAll;router.renderAdminTab()" class="bg-amber-500 text-white px-4 py-2 rounded-lg font-black text-xs">${showAll?'🔻 초기투자 제외하기':'🔺 초기투자 포함 보기'}</button>
-    </div>
-    
-    <div class="grid grid-cols-4 gap-4 mb-6">
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총매출</p><p class="text-2xl font-black text-blue-600 mt-2">${fmt(rev)}</p></div>
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${showAll?'총지출 (전체)':'운영 지출 (초기투자 제외)'}</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(cost)}</p></div>
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">초기투자지출</p><p class="text-2xl font-black text-amber-600 mt-2">${fmt(costInit)}</p><p class="text-[9px] text-slate-400 mt-1">${showAll?'포함됨':'제외됨'}</p></div>
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${showAll?'순이익 (전체)':'운영 순이익'}</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-cost)}</p></div>
-    </div>
-    
-    <div class="grid grid-cols-2 gap-4 mb-6">
-      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">숙소별 손익</h3><canvas id="c1" height="200"></canvas></div>
-      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">지출 카테고리 분포</h3><canvas id="c2" height="200"></canvas></div>
-    </div>
-    
-    <div class="bg-white p-6 rounded-2xl border">
-      <div class="flex justify-between items-center mb-4"><h3 class="font-black">📧 정기 보고서 수신자</h3></div>
-      <div class="flex flex-wrap gap-2 mb-3">${store.reportRecipients.map(r=>`<span class="inline-flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg text-xs font-bold">${store.user(r)?.name||r}<button onclick="router.delRecipient('${r}')" class="text-red-400">×</button></span>`).join('')}</div>
-      <select onchange="router.addRecipient(this.value)" class="p-3 border rounded-xl font-bold"><option value="">+ 수신자 추가</option>${store.users.filter(u=>!store.reportRecipients.includes(u.id)).map(u=>`<option value="${u.id}">${u.name}</option>`).join('')}</select>
-    </div>`;
-    
+    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">📊 통계 & 보고서</h2><button onclick="router.genReport()" class="bg-amber-500 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg">📝 AI 보고서 생성</button></div>
+    <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 mb-4 flex items-center justify-between"><div><p class="text-sm font-black text-amber-700">💡 통계 기준: <b>${showAll?'초기투자 포함':'초기투자 제외 (운영 통계)'}</b></p><p class="text-xs text-amber-600 font-bold mt-1">리모델링/가구구입 등 일회성 비용은 ${showAll?'포함':'제외'}됩니다</p></div><button onclick="router._statsShowAll=!router._statsShowAll;router.renderAdminTab()" class="bg-amber-500 text-white px-4 py-2 rounded-lg font-black text-xs">${showAll?'🔻 초기투자 제외하기':'🔺 초기투자 포함 보기'}</button></div>
+    <div class="grid grid-cols-4 gap-4 mb-6"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총매출</p><p class="text-2xl font-black text-blue-600 mt-2">${fmt(rev)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${showAll?'총지출':'운영지출'}</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(cost)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">초기투자</p><p class="text-2xl font-black text-amber-600 mt-2">${fmt(costInit)}</p><p class="text-[9px] text-slate-400 mt-1">${showAll?'포함':'제외됨'}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${showAll?'순이익':'운영순이익'}</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-cost)}</p></div></div>
+    <div class="grid grid-cols-2 gap-4 mb-6"><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">숙소별 손익</h3><canvas id="c1" height="200"></canvas></div><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">지출 카테고리 분포</h3><canvas id="c2" height="200"></canvas></div></div>
+    <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📧 정기 보고서 수신자</h3><div class="flex flex-wrap gap-2 mb-3">${store.reportRecipients.map(r=>`<span class="inline-flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg text-xs font-bold">${store.user(r)?.name||r}<button onclick="router.delRecipient('${r}')" class="text-red-400">×</button></span>`).join('')}</div><select onchange="router.addRecipient(this.value)" class="p-3 border rounded-xl font-bold"><option value="">+ 수신자 추가</option>${store.users.filter(u=>!store.reportRecipients.includes(u.id)).map(u=>`<option value="${u.id}">${u.name}</option>`).join('')}</select></div>`;
     setTimeout(()=>{
       const pL = store.properties.map(p=>p.name.slice(0,8));
       const pR = store.properties.map(p=>store.bookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+b.price,0));
-      // 숙소별 지출도 초기투자 제외 적용
       const pC = store.properties.map(p=>{
         const exp = store.expenses.filter(e=>e.propId===p.id);
-        return showAll 
-          ? exp.reduce((s,e)=>s+e.amount,0)
-          : exp.filter(e=>e.majorCat!=='초기투자지출').reduce((s,e)=>s+e.amount,0);
+        return showAll ? exp.reduce((s,e)=>s+e.amount,0) : exp.filter(e=>e.majorCat!=='초기투자지출').reduce((s,e)=>s+e.amount,0);
       });
       new Chart(document.getElementById('c1'),{type:'bar',data:{labels:pL,datasets:[{label:'매출',data:pR,backgroundColor:'#2563eb'},{label:showAll?'전체지출':'운영지출',data:pC,backgroundColor:'#ef4444'}]},options:{scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
-      
-      // 카테고리 분포 (초기투자 제외 시 변동/고정만 표시)
       const cat = {};
       const targetExp = showAll ? store.expenses : store.expenses.filter(e=>e.majorCat!=='초기투자지출');
       targetExp.forEach(e=>cat[e.category]=(cat[e.category]||0)+e.amount);
       new Chart(document.getElementById('c2'),{type:'doughnut',data:{labels:Object.keys(cat),datasets:[{data:Object.values(cat),backgroundColor:['#2563eb','#ef4444','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#6366f1']}]}});
     },100);
   }
+  
   async addRecipient(uid){if(uid&&!store.reportRecipients.includes(uid)){store.reportRecipients.push(uid);await API.setAll('reportRecipients',store.reportRecipients);await this.renderAdminTab()}}
   async delRecipient(uid){store.reportRecipients=store.reportRecipients.filter(x=>x!==uid);await API.setAll('reportRecipients',store.reportRecipients);await this.renderAdminTab()}
 
-   genReport() {
+  genReport() {
     const rev = store.bookings.reduce((s,b)=>s+b.price,0);
-    const cost = store.expenses.reduce((s,e)=>s+e.amount,0);
+    const cost = store.expenses.filter(e=>e.majorCat!=='초기투자지출').reduce((s,e)=>s+e.amount,0);
     const top = [...store.properties].sort((a,b)=>store.bookings.filter(x=>x.propId===b.id).reduce((s,x)=>s+x.price,0)-store.bookings.filter(x=>x.propId===a.id).reduce((s,x)=>s+x.price,0))[0];
     const critical = store.logs.filter(l=>l.special).slice(0,5);
     const recentChats = [...store.chats].slice(-5).reverse();
-    
-    openModal('📝 AI 자동 생성 보고서', `
-      <div class="space-y-5">
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl">
-          <p class="text-xs font-black uppercase opacity-70 mb-2">이번 주 핵심 요약</p>
-          <p class="font-bold leading-relaxed">총 매출 <b>${fmt(rev)}</b>, 총 지출 <b>${fmt(cost)}</b>으로 <b>${fmt(rev-cost)}</b>의 순이익을 달성했습니다. 최고 매출 숙소는 <b>${top?.name||'-'}</b>이며, ${critical.length}건의 특이사항이 발생했습니다.</p>
-        </div>
-        
-        <div>
-          <h4 class="font-black mb-3">📈 매출 현황</h4>
-          <div class="bg-slate-50 p-4 rounded-xl">
-            <p class="text-sm">총 ${store.bookings.length}건 예약 / 평균 단가 ${fmt(store.bookings.length?Math.round(rev/store.bookings.length):0)}</p>
-          </div>
-        </div>
-        
-        <div>
-          <h4 class="font-black mb-3">💳 주요 지출 (TOP 3)</h4>
-          <div class="bg-slate-50 p-4 rounded-xl space-y-2">
-            ${Object.entries(store.expenses.reduce((a,e)=>{a[e.category]=(a[e.category]||0)+e.amount;return a},{})).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`<div class="flex justify-between text-sm"><span class="font-bold">${k}</span><span class="font-black text-red-500">${fmt(v)}</span></div>`).join('')}
-          </div>
-        </div>
-        
-        <div>
-          <h4 class="font-black mb-3">🚨 특이사항</h4>
-          <div class="bg-red-50 p-4 rounded-xl space-y-2">
-            ${critical.length?critical.map(l=>`<p class="text-sm font-bold text-red-700">• ${l.message}</p>`).join(''):'<p class="text-sm text-slate-500">특이사항 없음</p>'}
-          </div>
-        </div>
-        
-        <div>
-          <h4 class="font-black mb-3">💬 주요 대화 내역 (최근 5건)</h4>
-          <div class="bg-slate-50 p-4 rounded-xl space-y-3 max-h-60 overflow-y-auto scrollbar">
-            ${recentChats.length?recentChats.map(c=>{
-              const p = store.prop(c.propId);
-              return `<div class="bg-white p-3 rounded-lg">
-                <div class="flex items-center justify-between mb-1">
-                  <span class="text-[10px] font-black text-blue-600 uppercase">${p?.name||'-'}</span>
-                  <span class="text-[10px] text-slate-400 font-bold">${c.time}</span>
-                </div>
-                <p class="text-xs"><b class="text-slate-700">${c.sender}:</b> <span class="text-slate-600">${c.message}</span></p>
-              </div>`;
-            }).join(''):'<p class="text-sm text-slate-500">대화 내역 없음</p>'}
-          </div>
-        </div>
-        
-        <div>
-          <h4 class="font-black mb-3">🏠 숙소별 매출 순위 (TOP 3)</h4>
-          <div class="bg-slate-50 p-4 rounded-xl space-y-2">
-            ${[...store.properties].map(p=>({p,v:store.bookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+b.price,0)})).sort((a,b)=>b.v-a.v).slice(0,3).map((r,i)=>`<div class="flex justify-between text-sm"><span class="font-bold">${i+1}. ${r.p.name}</span><span class="font-black text-blue-600">${fmt(r.v)}</span></div>`).join('')}
-          </div>
-        </div>
-        
-        <div class="flex gap-2 pt-4 border-t">
-          <button onclick="window.print()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black">📄 인쇄/PDF</button>
-          <button onclick="toast('수신자 '+store.reportRecipients.length+'명에게 발송됨','success')" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black">📧 수신자 발송</button>
-        </div>
-      </div>`, 'max-w-3xl');
+    openModal('📝 AI 자동 생성 보고서', `<div class="space-y-5"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-xs font-black uppercase opacity-70 mb-2">이번 주 핵심 요약 (초기투자 제외)</p><p class="font-bold leading-relaxed">총 매출 <b>${fmt(rev)}</b>, 운영지출 <b>${fmt(cost)}</b>로 <b>${fmt(rev-cost)}</b>의 운영 순이익. 최고 매출 숙소는 <b>${top?.name||'-'}</b>이며, ${critical.length}건의 특이사항이 발생했습니다.</p></div><div><h4 class="font-black mb-3">📈 매출 현황</h4><div class="bg-slate-50 p-4 rounded-xl"><p class="text-sm">총 ${store.bookings.length}건 예약 / 평균 ${fmt(store.bookings.length?Math.round(rev/store.bookings.length):0)}</p></div></div><div><h4 class="font-black mb-3">💳 주요 지출 (TOP 3)</h4><div class="bg-slate-50 p-4 rounded-xl space-y-2">${Object.entries(store.expenses.filter(e=>e.majorCat!=='초기투자지출').reduce((a,e)=>{a[e.category]=(a[e.category]||0)+e.amount;return a},{})).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`<div class="flex justify-between text-sm"><span class="font-bold">${k}</span><span class="font-black text-red-500">${fmt(v)}</span></div>`).join('')}</div></div><div><h4 class="font-black mb-3">🚨 특이사항</h4><div class="bg-red-50 p-4 rounded-xl space-y-2">${critical.length?critical.map(l=>`<p class="text-sm font-bold text-red-700">• ${l.message}</p>`).join(''):'<p class="text-sm text-slate-500">없음</p>'}</div></div><div><h4 class="font-black mb-3">💬 주요 대화 내역</h4><div class="bg-slate-50 p-4 rounded-xl space-y-3 max-h-60 overflow-y-auto scrollbar">${recentChats.length?recentChats.map(c=>{const p=store.prop(c.propId);return `<div class="bg-white p-3 rounded-lg"><div class="flex items-center justify-between mb-1"><span class="text-[10px] font-black text-blue-600 uppercase">${p?.name||'-'}</span><span class="text-[10px] text-slate-400 font-bold">${c.time}</span></div><p class="text-xs"><b class="text-slate-700">${c.sender}:</b> <span class="text-slate-600">${c.message}</span></p></div>`}).join(''):'<p class="text-sm text-slate-500">없음</p>'}</div></div><div class="flex gap-2 pt-4 border-t"><button onclick="window.print()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black">📄 인쇄/PDF</button><button onclick="toast('수신자 '+store.reportRecipients.length+'명 발송','success')" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black">📧 발송</button></div></div>`, 'max-w-3xl');
   }
 
+  // ===== 운영 관리 (AI 추천) =====
   admOps(c) {
     const ops = store.opsData || {};
     const sumSedae = store.properties.reduce((s,p)=>s+(p.sedaebi||0),0);
@@ -1112,65 +728,40 @@ class Router {
     const sumFinalCost = store.properties.reduce((s,p)=>s+(ops[p.id]?.finalCost||0),0);
     const sumFinalProfit = store.properties.reduce((s,p)=>s+(ops[p.id]?.finalProfit||0),0);
     const sumOpCost = store.properties.reduce((s,p)=>s+(ops[p.id]?.opCost||0),0);
-    c.innerHTML = `<div class="mb-6"><h2 class="text-3xl font-black mb-1">📋 [큐제이] 단기임대 세팅 및 관리 리스트</h2><p class="text-slate-500 text-sm font-medium">모든 매물의 운영 데이터 통합 관리</p></div>
-      <div class="grid grid-cols-6 gap-3 mb-6">
-        <div class="bg-amber-50 p-4 rounded-xl border border-amber-200"><p class="text-[9px] font-black text-amber-600 uppercase">세대비</p><p class="text-lg font-black text-amber-700 mt-1">${fmtNum(sumSedae)}</p></div>
-        <div class="bg-blue-50 p-4 rounded-xl border border-blue-200"><p class="text-[9px] font-black text-blue-600 uppercase">총매출</p><p class="text-lg font-black text-blue-700 mt-1">${fmtNum(sumTotalRev)}</p></div>
-        <div class="bg-green-50 p-4 rounded-xl border border-green-200"><p class="text-[9px] font-black text-green-600 uppercase">실입금액</p><p class="text-lg font-black text-green-700 mt-1">${fmtNum(sumSilip)}</p></div>
-        <div class="bg-red-50 p-4 rounded-xl border border-red-200"><p class="text-[9px] font-black text-red-600 uppercase">최종비용</p><p class="text-lg font-black text-red-700 mt-1">${fmtNum(sumFinalCost)}</p></div>
-        <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-200"><p class="text-[9px] font-black text-emerald-600 uppercase">최종순수익</p><p class="text-lg font-black text-emerald-700 mt-1">${fmtNum(sumFinalProfit)}</p></div>
-        <div class="bg-slate-900 p-4 rounded-xl text-white"><p class="text-[9px] font-black uppercase opacity-70">운영비</p><p class="text-lg font-black mt-1">${fmtNum(sumOpCost)}</p></div>
-      </div>
-      <div class="bg-white rounded-2xl border overflow-auto max-h-[70vh]">
-        <table class="ops-table w-full text-xs"><thead class="sticky top-0 z-10"><tr class="bg-slate-800 text-white">${['No','매니저','매물','세대비','매막매출','관리비','청소비','총매출','실입금액','수리','청소','가스','인터넷','분리수거','시작','마감','최종비용','순수익','운영일','월평균','주단가','월예상','운영비','주소','편집'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-        <tbody>${store.properties.map((p,i)=>{
-          const o = ops[p.id]||{};
-          return `<tr class="hover:bg-blue-50/30">
-            <td class="text-center font-black">${i+1}</td>
-            <td class="text-center">${mgrTag(p.manager)}</td>
-            <td class="font-black whitespace-nowrap">${p.name}</td>
-            <td class="text-right font-bold text-amber-600">${fmtNum(p.sedaebi||0)}</td>
-            <td class="text-right">${fmtNum(o.maemakMae||0)}</td>
-            <td class="text-right">${fmtNum(o.gwanli||0)}</td>
-            <td class="text-right">${fmtNum(o.cheongso||0)}</td>
-            <td class="text-right font-black text-blue-600">${fmtNum(o.totalRev||0)}</td>
-            <td class="text-right font-black text-green-600 bg-green-50">${fmtNum(o.silip||0)}</td>
-            <td class="text-center text-[10px]">${o.repair||'-'}</td>
-            <td class="text-center text-[10px]">${o.entryClean||'-'}</td>
-            <td class="text-center text-[10px]">${o.gas||'-'}</td>
-            <td class="text-center text-[10px]">${o.netProvider||'-'}</td>
-            <td class="text-center text-[10px]">${o.recycle||'-'}</td>
-            <td class="text-center font-mono">${o.startOp||'-'}</td>
-            <td class="text-center font-mono">${o.endOp||'-'}</td>
-            <td class="text-right font-bold text-red-500">${fmtNum(o.finalCost||0)}</td>
-            <td class="text-right font-black text-emerald-600">${fmtNum(o.finalProfit||0)}</td>
-            <td class="text-center font-bold">${o.opDays||0}</td>
-            <td class="text-right font-bold">${fmtNum(o.avgMonth||0)}</td>
-            <td class="text-right text-[10px]">${fmtNum(o.weekly||0)}</td>
-            <td class="text-right font-bold">${fmtNum(o.monthly||0)}</td>
-            <td class="text-right font-bold text-slate-500">${fmtNum(o.opCost||0)}</td>
-            <td class="text-[10px]"><a href="${p.guide||'#'}" target="_blank" class="text-blue-600 underline">${(p.address||p.location||'-').slice(0,20)}</a></td>
-            <td class="text-center"><button onclick="router.showOpsForm(${p.id})" class="p-1.5 bg-slate-100 rounded-lg hover:bg-blue-500 hover:text-white"><i data-lucide="edit-3" class="w-3 h-3"></i></button></td>
-          </tr>`;
-        }).join('')}</tbody></table>
-      </div>
-      <p class="text-xs text-slate-400 mt-4 font-medium">💡 편집 버튼으로 운영 데이터 수정</p>`;
+    
+    // AI 운영 추천
+    const aiRecs = [];
+    store.properties.forEach(p => {
+      const o = ops[p.id]||{};
+      const myBookings = store.bookings.filter(b=>b.propId===p.id);
+      const myExp = store.expenses.filter(e=>e.propId===p.id&&e.majorCat!=='초기투자지출').reduce((s,e)=>s+e.amount,0);
+      const rev = myBookings.reduce((s,b)=>s+b.price,0);
+      const profitRate = rev?(rev-myExp)/rev*100:0;
+      if (profitRate < 30 && rev > 0) aiRecs.push({prop:p,type:'low-margin',msg:`수익률 ${Math.round(profitRate)}% - 가격 인상 또는 비용 절감 필요`});
+      if (myBookings.length === 0) aiRecs.push({prop:p,type:'no-booking',msg:'예약 0건 - 마케팅 강화 필요'});
+      if (o.opDays > 100 && (o.avgMonth||0) < 1000000) aiRecs.push({prop:p,type:'low-revenue',msg:`운영 ${o.opDays}일 평균 매출 부족`});
+    });
+    
+    c.innerHTML = `<div class="mb-6"><h2 class="text-3xl font-black mb-1">📋 운영 관리 (AI 통합)</h2><p class="text-slate-500 text-sm font-medium">AI 추천 + 실시간 운영 데이터 통합 관리</p></div>
+    ${aiRecs.length?`<div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-5 rounded-2xl mb-6"><h3 class="font-black mb-3 flex items-center gap-2"><i data-lucide="sparkles" class="w-5 h-5"></i>🤖 AI 운영 추천 (${aiRecs.length}건)</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-2">${aiRecs.slice(0,4).map(r=>`<div class="bg-white/10 rounded-xl p-3"><p class="text-sm font-black">${r.prop.name}</p><p class="text-[11px] opacity-80 mt-1">${r.msg}</p></div>`).join('')}</div></div>`:''}
+    <div class="grid grid-cols-6 gap-3 mb-6">
+      <div class="bg-amber-50 p-4 rounded-xl border border-amber-200"><p class="text-[9px] font-black text-amber-600 uppercase">세대비</p><p class="text-lg font-black text-amber-700 mt-1">${fmtNum(sumSedae)}</p></div>
+      <div class="bg-blue-50 p-4 rounded-xl border border-blue-200"><p class="text-[9px] font-black text-blue-600 uppercase">총매출</p><p class="text-lg font-black text-blue-700 mt-1">${fmtNum(sumTotalRev)}</p></div>
+      <div class="bg-green-50 p-4 rounded-xl border border-green-200"><p class="text-[9px] font-black text-green-600 uppercase">실입금액</p><p class="text-lg font-black text-green-700 mt-1">${fmtNum(sumSilip)}</p></div>
+      <div class="bg-red-50 p-4 rounded-xl border border-red-200"><p class="text-[9px] font-black text-red-600 uppercase">최종비용</p><p class="text-lg font-black text-red-700 mt-1">${fmtNum(sumFinalCost)}</p></div>
+      <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-200"><p class="text-[9px] font-black text-emerald-600 uppercase">최종순수익</p><p class="text-lg font-black text-emerald-700 mt-1">${fmtNum(sumFinalProfit)}</p></div>
+      <div class="bg-slate-900 p-4 rounded-xl text-white"><p class="text-[9px] font-black uppercase opacity-70">운영비</p><p class="text-lg font-black mt-1">${fmtNum(sumOpCost)}</p></div>
+    </div>
+    <div class="bg-white rounded-2xl border overflow-auto max-h-[70vh]"><table class="ops-table w-full text-xs"><thead class="sticky top-0 z-10"><tr class="bg-slate-800 text-white">${['No','매니저','매물','세대비','매막매출','관리비','청소비','총매출','실입금액','수리','청소','가스','인터넷','분리수거','시작','마감','최종비용','순수익','운영일','월평균','주단가','월예상','운영비','주소','편집'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${store.properties.map((p,i)=>{const o=ops[p.id]||{};const aiAlert=aiRecs.find(r=>r.prop.id===p.id);return `<tr class="hover:bg-blue-50/30 ${aiAlert?'bg-purple-50':''}"><td class="text-center font-black">${i+1}${aiAlert?' ⚠️':''}</td><td class="text-center">${mgrTag(p.manager)}</td><td class="font-black whitespace-nowrap">${p.name}</td><td class="text-right font-bold text-amber-600">${fmtNum(p.sedaebi||0)}</td><td class="text-right">${fmtNum(o.maemakMae||0)}</td><td class="text-right">${fmtNum(o.gwanli||0)}</td><td class="text-right">${fmtNum(o.cheongso||0)}</td><td class="text-right font-black text-blue-600">${fmtNum(o.totalRev||0)}</td><td class="text-right font-black text-green-600 bg-green-50">${fmtNum(o.silip||0)}</td><td class="text-center text-[10px]">${o.repair||'-'}</td><td class="text-center text-[10px]">${o.entryClean||'-'}</td><td class="text-center text-[10px]">${o.gas||'-'}</td><td class="text-center text-[10px]">${o.netProvider||'-'}</td><td class="text-center text-[10px]">${o.recycle||'-'}</td><td class="text-center font-mono">${o.startOp||'-'}</td><td class="text-center font-mono">${o.endOp||'-'}</td><td class="text-right font-bold text-red-500">${fmtNum(o.finalCost||0)}</td><td class="text-right font-black text-emerald-600">${fmtNum(o.finalProfit||0)}</td><td class="text-center font-bold">${o.opDays||0}</td><td class="text-right font-bold">${fmtNum(o.avgMonth||0)}</td><td class="text-right text-[10px]">${fmtNum(o.weekly||0)}</td><td class="text-right font-bold">${fmtNum(o.monthly||0)}</td><td class="text-right font-bold text-slate-500">${fmtNum(o.opCost||0)}</td><td class="text-[10px]"><a href="${p.guide||'#'}" target="_blank" class="text-blue-600 underline">${(p.address||p.location||'-').slice(0,20)}</a></td><td class="text-center"><button onclick="router.showOpsForm(${p.id})" class="p-1.5 bg-slate-100 rounded-lg hover:bg-blue-500 hover:text-white"><i data-lucide="edit-3" class="w-3 h-3"></i></button></td></tr>`}).join('')}</tbody></table></div>
+    <p class="text-xs text-slate-400 mt-4 font-medium">💡 ⚠️ 표시는 AI 추천이 있는 매물 · 편집 버튼으로 수정 가능</p>`;
     lucide.createIcons();
   }
 
   showOpsForm(propId) {
     const p = store.prop(propId);
     const o = (store.opsData||{})[propId]||{};
-    openModal(`✏️ ${p.name} 운영 데이터`, `<form id="opsF" class="space-y-4">
-      <div class="grid grid-cols-3 gap-3">
-        ${[['sedaebi','세대비',p.sedaebi||0],['maemakMae','매막매출',o.maemakMae||0],['gwanli','관리비',o.gwanli||0],['cheongso','청소비',o.cheongso||0],['totalRev','총매출',o.totalRev||0],['silip','실입금액',o.silip||0]].map(([k,l,v])=>`<div><label class="text-[10px] font-black text-slate-400 uppercase">${l}</label><input type="number" name="${k}" value="${v}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}
-        ${[['repair','수리',o.repair||''],['entryClean','입주청소',o.entryClean||''],['gas','도시가스',o.gas||'']].map(([k,l,v])=>`<div><label class="text-[10px] font-black text-slate-400 uppercase">${l}</label><input name="${k}" value="${v}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}
-        <div class="col-span-3"><label class="text-[10px] font-black text-slate-400 uppercase">인터넷</label><input name="netProvider" value="${o.netProvider||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-        ${[['recycle','분리수거',o.recycle||''],['startOp','운영시작',o.startOp||''],['endOp','운영마감',o.endOp||'']].map(([k,l,v])=>`<div><label class="text-[10px] font-black text-slate-400 uppercase">${l}</label><input name="${k}" value="${v}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}
-        ${[['finalCost','최종비용',o.finalCost||0],['finalProfit','최종순수익',o.finalProfit||0],['opDays','운영일',o.opDays||0],['avgMonth','월평균',o.avgMonth||0],['weekly','주단가',o.weekly||0],['monthly','월예상',o.monthly||0],['opCost','운영비',o.opCost||0]].map(([k,l,v])=>`<div><label class="text-[10px] font-black text-slate-400 uppercase">${l}</label><input type="number" name="${k}" value="${v}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}
-      </div>
-      <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">저장</button>
-    </form>`, 'max-w-4xl');
+    openModal(`✏️ ${p.name} 운영 데이터`, `<form id="opsF" class="space-y-4"><div class="grid grid-cols-3 gap-3">${[['sedaebi','세대비',p.sedaebi||0],['maemakMae','매막매출',o.maemakMae||0],['gwanli','관리비',o.gwanli||0],['cheongso','청소비',o.cheongso||0],['totalRev','총매출',o.totalRev||0],['silip','실입금액',o.silip||0]].map(([k,l,v])=>`<div><label class="text-[10px] font-black text-slate-400 uppercase">${l}</label><input type="number" name="${k}" value="${v}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}${[['repair','수리',o.repair||''],['entryClean','입주청소',o.entryClean||''],['gas','도시가스',o.gas||'']].map(([k,l,v])=>`<div><label class="text-[10px] font-black text-slate-400 uppercase">${l}</label><input name="${k}" value="${v}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}<div class="col-span-3"><label class="text-[10px] font-black text-slate-400 uppercase">인터넷</label><input name="netProvider" value="${o.netProvider||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>${[['recycle','분리수거',o.recycle||''],['startOp','운영시작',o.startOp||''],['endOp','운영마감',o.endOp||'']].map(([k,l,v])=>`<div><label class="text-[10px] font-black text-slate-400 uppercase">${l}</label><input name="${k}" value="${v}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}${[['finalCost','최종비용',o.finalCost||0],['finalProfit','최종순수익',o.finalProfit||0],['opDays','운영일',o.opDays||0],['avgMonth','월평균',o.avgMonth||0],['weekly','주단가',o.weekly||0],['monthly','월예상',o.monthly||0],['opCost','운영비',o.opCost||0]].map(([k,l,v])=>`<div><label class="text-[10px] font-black text-slate-400 uppercase">${l}</label><input type="number" name="${k}" value="${v}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}</div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">저장</button></form>`, 'max-w-4xl');
     document.getElementById('opsF').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -1187,17 +778,12 @@ class Router {
       await this.renderAdminTab();
     };
   }
-
-    admCustomers(c) {
-    if (!store.customerMemos) store.customerMemos = {};
+  // ===== 고객 관리 (플랫폼 통계 + CRUD + 메모 + 최신순) =====
+  admCustomers(c) {
     const map = {};
     store.bookings.forEach(b=>{
       const k = b.guest+'|'+b.contact;
-      if (!map[k]) map[k] = {
-        key: k, guest: b.guest, contact: b.contact, nat: b.nationality,
-        n: 0, t: 0, plats: new Set(), last: '', firstBk: b.checkIn,
-        bookings: []
-      };
+      if (!map[k]) map[k] = {key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),last:'',bookings:[]};
       map[k].n++; map[k].t += b.price;
       map[k].plats.add(b.platform);
       if (b.checkIn > map[k].last) map[k].last = b.checkIn;
@@ -1206,7 +792,6 @@ class Router {
     // 최근 예약순 정렬
     const list = Object.values(map).sort((a,b) => (b.last || '').localeCompare(a.last || ''));
     
-    // 플랫폼별 통계
     const platStats = {};
     store.platforms.forEach(p => platStats[p.name] = { count: 0, revenue: 0, color: p.color });
     store.bookings.forEach(b => {
@@ -1217,54 +802,10 @@ class Router {
     });
     const totalRev = Object.values(platStats).reduce((s,p)=>s+p.revenue,0);
     
-    c.innerHTML = `<div class="flex justify-between items-center mb-6">
-      <div><h2 class="text-3xl font-black">👥 고객 관리</h2><p class="text-slate-500 font-medium mt-1">최근 예약순으로 정렬</p></div>
-      <button onclick="router.showPlatformMgr()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">🎯 플랫폼 관리</button>
-    </div>
-    
-    <div class="grid grid-cols-4 gap-4 mb-6">
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총 고객수</p><p class="text-2xl font-black mt-2">${list.length}명</p></div>
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">재방문</p><p class="text-2xl font-black text-blue-600 mt-2">${list.filter(x=>x.n>1).length}명</p></div>
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">평균객단가</p><p class="text-2xl font-black mt-2">${fmt(list.length?Math.round(list.reduce((s,x)=>s+x.t,0)/list.length):0)}</p></div>
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">외국인</p><p class="text-2xl font-black mt-2">${list.filter(x=>x.nat!=='한국').length}명</p></div>
-    </div>
-    
-    <div class="bg-white rounded-2xl border overflow-hidden mb-6">
-      <div class="p-5 border-b bg-slate-50 flex justify-between items-center"><h3 class="font-black text-sm uppercase tracking-widest">고객 리스트 (최신 예약순)</h3><span class="text-xs text-slate-400 font-bold">💡 행 클릭 시 상세/메모</span></div>
-      <div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['No.','예약자','연락처','국적','예약횟수','총매출','평균','플랫폼','최근예약','메모'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead>
-      <tbody class="text-sm divide-y">${list.map((cu,i)=>{
-        const memo = store.customerMemos[cu.key]?.memo || '';
-        return `<tr class="hover:bg-blue-50/30 cursor-pointer" onclick="router.showCustomerDetail('${cu.key}')">
-          <td class="px-4 py-3 font-black">${i+1}</td>
-          <td class="px-4 py-3 font-black">${cu.guest}</td>
-          <td class="px-4 py-3 font-mono text-xs">${cu.contact}</td>
-          <td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-black">${cu.nat||'-'}</span></td>
-          <td class="px-4 py-3 text-center font-black ${cu.n>1?'text-blue-600':''}">${cu.n}회 ${cu.n>1?'⭐':''}</td>
-          <td class="px-4 py-3 font-black text-blue-600">${fmt(cu.t)}</td>
-          <td class="px-4 py-3 font-bold">${fmt(Math.round(cu.t/cu.n))}</td>
-          <td class="px-4 py-3 text-xs font-bold">${[...cu.plats].join(', ')}</td>
-          <td class="px-4 py-3 text-xs font-bold text-slate-500">${cu.last}</td>
-          <td class="px-4 py-3 text-xs ${memo?'text-amber-600 font-bold':'text-slate-300'}">${memo?'📝 '+memo.slice(0,15)+(memo.length>15?'...':''):'-'}</td>
-        </tr>`;
-      }).join('')}</tbody></table></div>
-    </div>
-    
-    <div class="bg-white rounded-2xl border p-6">
-      <h3 class="font-black text-lg mb-4 flex items-center gap-2">🎯 플랫폼별 매출 통계</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        ${Object.entries(platStats).map(([name,s])=>{
-          const pct = totalRev?Math.round(s.revenue/totalRev*100):0;
-          return `<div class="bg-slate-50 p-4 rounded-2xl border-l-4" style="border-color:${s.color}">
-            <div class="flex justify-between items-start mb-2"><span class="font-black text-sm" style="color:${s.color}">${name}</span><span class="text-[10px] font-black bg-white px-2 py-0.5 rounded-full">${pct}%</span></div>
-            <p class="text-2xl font-black text-slate-800 mt-1">${fmt(s.revenue)}</p>
-            <p class="text-xs text-slate-500 font-bold mt-1">${s.count}건 예약 · 평균 ${fmt(s.count?Math.round(s.revenue/s.count):0)}</p>
-            <div class="w-full bg-slate-200 rounded-full h-2 mt-3"><div class="h-2 rounded-full" style="width:${pct}%;background:${s.color}"></div></div>
-          </div>`;
-        }).join('')}
-      </div>
-      <canvas id="platChart" height="80"></canvas>
-    </div>`;
-    
+    c.innerHTML = `<div class="flex justify-between items-center mb-6"><div><h2 class="text-3xl font-black">👥 고객 관리</h2><p class="text-slate-500 mt-1">최근 예약순 · 클릭하여 메모/정보 수정</p></div><button onclick="router.showPlatformMgr()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">🎯 플랫폼 관리</button></div>
+    <div class="grid grid-cols-4 gap-4 mb-6"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총 고객수</p><p class="text-2xl font-black mt-2">${list.length}명</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">재방문</p><p class="text-2xl font-black text-blue-600 mt-2">${list.filter(x=>x.n>1).length}명</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">평균객단가</p><p class="text-2xl font-black mt-2">${fmt(list.length?Math.round(list.reduce((s,x)=>s+x.t,0)/list.length):0)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">외국인</p><p class="text-2xl font-black mt-2">${list.filter(x=>x.nat&&x.nat!=='한국').length}명</p></div></div>
+    <div class="bg-white rounded-2xl border overflow-hidden mb-6"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">📋 고객 리스트 (최신순)</h3></div><div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['No.','예약자','연락처','국적','횟수','총매출','평균','플랫폼','최근','메모'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${list.map((cu,i)=>{const memo=store.customerMemos[cu.key]?.memo||'';return `<tr class="hover:bg-blue-50/30 cursor-pointer" onclick="router.showCustomerDetail('${cu.key}')"><td class="px-4 py-3 font-black">${i+1}</td><td class="px-4 py-3 font-black">${cu.guest}</td><td class="px-4 py-3 font-mono text-xs">${cu.contact}</td><td class="px-4 py-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-black">${cu.nat||'-'}</span></td><td class="px-4 py-3 text-center font-black ${cu.n>1?'text-blue-600':''}">${cu.n}회 ${cu.n>1?'⭐':''}</td><td class="px-4 py-3 font-black text-blue-600">${fmt(cu.t)}</td><td class="px-4 py-3 font-bold">${fmt(Math.round(cu.t/cu.n))}</td><td class="px-4 py-3 text-xs font-bold">${[...cu.plats].join(', ')}</td><td class="px-4 py-3 text-xs font-bold text-slate-500">${cu.last}</td><td class="px-4 py-3 text-xs ${memo?'text-amber-600 font-bold':'text-slate-300'}">${memo?'📝 '+memo.slice(0,15)+(memo.length>15?'...':''):'-'}</td></tr>`}).join('')}</tbody></table></div></div>
+    <div class="bg-white rounded-2xl border p-6"><h3 class="font-black text-lg mb-4">🎯 플랫폼별 매출 통계</h3><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">${Object.entries(platStats).map(([name,s])=>{const pct=totalRev?Math.round(s.revenue/totalRev*100):0;return `<div class="bg-slate-50 p-4 rounded-2xl border-l-4" style="border-color:${s.color}"><div class="flex justify-between items-start mb-2"><span class="font-black text-sm" style="color:${s.color}">${name}</span><span class="text-[10px] font-black bg-white px-2 py-0.5 rounded-full">${pct}%</span></div><p class="text-2xl font-black text-slate-800 mt-1">${fmt(s.revenue)}</p><p class="text-xs text-slate-500 font-bold mt-1">${s.count}건 · 평균 ${fmt(s.count?Math.round(s.revenue/s.count):0)}</p><div class="w-full bg-slate-200 rounded-full h-2 mt-3"><div class="h-2 rounded-full" style="width:${pct}%;background:${s.color}"></div></div></div>`}).join('')}</div><canvas id="platChart" height="80"></canvas></div>`;
     setTimeout(()=>{
       const labels = Object.keys(platStats);
       const data = labels.map(l=>platStats[l].revenue);
@@ -1279,44 +820,12 @@ class Router {
     store.bookings.forEach(b=>{const k=b.guest+'|'+b.contact;if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),bookings:[]};map[k].n++;map[k].t+=b.price;map[k].plats.add(b.platform);map[k].bookings.push(b)});
     const cu = map[key];
     if (!cu) return;
-    if (!store.customerMemos) store.customerMemos = {};
     const cmemo = store.customerMemos[key] || { name: cu.guest, contact: cu.contact, nat: cu.nat, memo: '' };
-    
-    openModal(`👤 ${cu.guest}님 정보`, `
-      <form id="custForm" class="space-y-4">
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl">
-          <p class="text-xs font-black uppercase opacity-70">고객 통계</p>
-          <p class="text-3xl font-black mt-2">${cu.guest}</p>
-          <div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20">
-            <div><p class="text-[10px] font-black opacity-70 uppercase">예약횟수</p><p class="text-2xl font-black">${cu.n}회</p></div>
-            <div><p class="text-[10px] font-black opacity-70 uppercase">총매출</p><p class="text-xl font-black">${fmt(cu.t)}</p></div>
-            <div><p class="text-[10px] font-black opacity-70 uppercase">평균객단가</p><p class="text-xl font-black">${fmt(Math.round(cu.t/cu.n))}</p></div>
-          </div>
-        </div>
-        
-        <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">이름</label><input name="name" value="${cmemo.name}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">연락처</label><input name="contact" value="${cmemo.contact}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-        </div>
-        <div><label class="text-[10px] font-black text-slate-400 uppercase">국적</label><input name="nat" value="${cmemo.nat||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
-        <div><label class="text-[10px] font-black text-amber-600 uppercase">📝 고객 메모 (특이사항, VIP 표시 등)</label><textarea name="memo" placeholder="예: VIP 고객 / 알러지 정보 / 선호 사항..." class="w-full p-3 border-2 border-amber-200 rounded-xl font-bold mt-1 h-32 bg-amber-50">${cmemo.memo||''}</textarea></div>
-        
-        <div class="bg-slate-50 p-4 rounded-xl">
-          <p class="text-[10px] font-black text-slate-500 uppercase mb-3">📅 예약 이력 (${cu.bookings.length}건)</p>
-          <div class="space-y-2 max-h-40 overflow-y-auto scrollbar">${cu.bookings.sort((a,b)=>b.checkIn.localeCompare(a.checkIn)).map(b=>{const p=store.prop(b.propId);const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="bg-white p-2 rounded-lg flex justify-between text-xs"><div><b>${p?.name||'-'}</b> · <span style="color:${pl?.color||'#666'}">${b.platform}</span></div><div><span class="text-slate-500">${b.checkIn}~${b.checkOut}</span> <b class="text-blue-600">${fmt(b.price)}</b></div></div>`}).join('')}</div>
-        </div>
-        
-        <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 정보 저장</button>
-      </form>
-    `, 'max-w-3xl');
-    
+    openModal(`👤 ${cu.guest}님 정보`, `<form id="custForm" class="space-y-4"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-xs font-black uppercase opacity-70">고객 통계</p><p class="text-3xl font-black mt-2">${cu.guest}</p><div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20"><div><p class="text-[10px] font-black opacity-70 uppercase">예약횟수</p><p class="text-2xl font-black">${cu.n}회</p></div><div><p class="text-[10px] font-black opacity-70 uppercase">총매출</p><p class="text-xl font-black">${fmt(cu.t)}</p></div><div><p class="text-[10px] font-black opacity-70 uppercase">평균객단가</p><p class="text-xl font-black">${fmt(Math.round(cu.t/cu.n))}</p></div></div></div><div class="grid grid-cols-2 gap-3"><div><label class="text-[10px] font-black text-slate-400 uppercase">이름</label><input name="name" value="${cmemo.name}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">연락처</label><input name="contact" value="${cmemo.contact}" class="w-full p-3 border rounded-xl font-bold mt-1"></div></div><div><label class="text-[10px] font-black text-slate-400 uppercase">국적</label><input name="nat" value="${cmemo.nat||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black text-amber-600 uppercase">📝 고객 메모</label><textarea name="memo" placeholder="VIP/알러지/선호사항 등" class="w-full p-3 border-2 border-amber-200 rounded-xl font-bold mt-1 h-32 bg-amber-50">${cmemo.memo||''}</textarea></div><div class="bg-slate-50 p-4 rounded-xl"><p class="text-[10px] font-black text-slate-500 uppercase mb-3">📅 예약 이력 (${cu.bookings.length}건)</p><div class="space-y-2 max-h-40 overflow-y-auto scrollbar">${cu.bookings.sort((a,b)=>b.checkIn.localeCompare(a.checkIn)).map(b=>{const p=store.prop(b.propId);const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="bg-white p-2 rounded-lg flex justify-between text-xs"><div><b>${p?.name||'-'}</b> · <span style="color:${pl?.color||'#666'}">${b.platform}</span></div><div><span class="text-slate-500">${b.checkIn}~${b.checkOut}</span> <b class="text-blue-600">${fmt(b.price)}</b></div></div>`}).join('')}</div></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 정보 저장</button></form>`, 'max-w-3xl');
     document.getElementById('custForm').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
-      store.customerMemos[key] = d;
-      await API.setAll('customerMemos', store.customerMemos).catch(()=>{
-        // customerMemos 컬렉션이 없으면 직접 저장
-      });
+      await store.saveCustomerMemo(key, d);
       toast('고객 정보 저장됨', 'success');
       closeModal();
       await this.renderAdminTab();
@@ -1324,23 +833,7 @@ class Router {
   }
 
   showPlatformMgr() {
-    openModal('🎯 예약 플랫폼 관리', `
-      <div class="space-y-2 mb-4">${store.platforms.map((p,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl">
-        <span class="w-8 h-8 rounded-lg" style="background:${p.color}"></span>
-        <input value="${p.name}" data-pn="${i}" class="flex-1 p-2 border rounded-lg font-bold">
-        <input type="color" value="${p.color}" data-pc="${i}" class="w-12 h-10 border rounded-lg cursor-pointer">
-        <button onclick="router.savePlatform(${i})" class="text-blue-500"><i data-lucide="check" class="w-4 h-4"></i></button>
-        <button onclick="router.delPlatform(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-      </div>`).join('')}</div>
-      <form id="platForm" class="bg-blue-50 p-4 rounded-xl">
-        <p class="text-xs font-black text-blue-600 uppercase mb-3">+ 신규 플랫폼 추가</p>
-        <div class="flex gap-2">
-          <input name="name" placeholder="플랫폼명" class="flex-1 p-3 border rounded-xl font-bold" required>
-          <input type="color" name="color" value="#2563eb" class="w-16 h-12 border rounded-xl cursor-pointer">
-          <button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button>
-        </div>
-      </form>
-    `);
+    openModal('🎯 예약 플랫폼 관리', `<div class="space-y-2 mb-4">${store.platforms.map((p,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl"><span class="w-8 h-8 rounded-lg" style="background:${p.color}"></span><input value="${p.name}" data-pn="${i}" class="flex-1 p-2 border rounded-lg font-bold"><input type="color" value="${p.color}" data-pc="${i}" class="w-12 h-10 border rounded-lg cursor-pointer"><button onclick="router.savePlatform(${i})" class="text-blue-500"><i data-lucide="check" class="w-4 h-4"></i></button><button onclick="router.delPlatform(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')}</div><form id="platForm" class="bg-blue-50 p-4 rounded-xl"><p class="text-xs font-black text-blue-600 uppercase mb-3">+ 신규 플랫폼 추가</p><div class="flex gap-2"><input name="name" placeholder="플랫폼명" class="flex-1 p-3 border rounded-xl font-bold" required><input type="color" name="color" value="#2563eb" class="w-16 h-12 border rounded-xl cursor-pointer"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`);
     document.getElementById('platForm').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -1368,25 +861,17 @@ class Router {
     await API.setAll('platforms', store.platforms);
     this.showPlatformMgr();
     await this.renderAdminTab();
-    toast('삭제됨', 'success');
   }
 
+  // ===== 이용자/권한 =====
   admUsers(c) {
-    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">🔐 이용자/권한 관리</h2><button onclick="router.showUserForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 신규 계정</button></div>
-      <div class="bg-white rounded-2xl border overflow-hidden"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['ID','이름','역할','색상','연락처','이메일','권한','관리'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${store.users.map(u=>`<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-mono font-black">${u.id}</td><td class="px-4 py-3 font-black">${u.name}</td><td class="px-4 py-3"><span class="px-2 py-1 rounded text-[10px] font-black ${u.role==='Admin'?'bg-amber-100 text-amber-700':u.role==='Manager'?'bg-blue-100 text-blue-700':'bg-slate-100'}">${u.role}</span></td><td class="px-4 py-3"><span class="tag-mgr" style="background:${u.tagColor||'#94a3b8'}">${(u.name.match(/\((.+)\)/)||[,u.name])[1]}</span></td><td class="px-4 py-3 text-xs">${u.contact||'-'}</td><td class="px-4 py-3 text-xs">${u.email||'-'}</td><td class="px-4 py-3 text-xs font-black text-blue-600">${u.role==='Admin'?'전체':u.role==='Director'?'뷰':(u.permissions?.length||0)+'개'}</td><td class="px-4 py-3"><button onclick="router.showUserForm('${u.id}')" class="p-2 bg-slate-100 rounded-lg mr-1"><i data-lucide="edit-3" class="w-4 h-4"></i></button>${u.id!=='admin'?`<button onclick="router.delUser('${u.id}')" class="p-2 bg-red-50 text-red-500 rounded-lg"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`:''}</td></tr>`).join('')}</tbody></table></div>`;
+    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">🔐 이용자/권한 관리</h2><button onclick="router.showUserForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 신규 계정</button></div><div class="bg-white rounded-2xl border overflow-hidden"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['ID','이름','역할','색상','연락처','이메일','권한','관리'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${store.users.map(u=>`<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-mono font-black">${u.id}</td><td class="px-4 py-3 font-black">${u.name}</td><td class="px-4 py-3"><span class="px-2 py-1 rounded text-[10px] font-black ${u.role==='Admin'?'bg-amber-100 text-amber-700':u.role==='Manager'?'bg-blue-100 text-blue-700':'bg-slate-100'}">${u.role}</span></td><td class="px-4 py-3"><span class="tag-mgr" style="background:${u.tagColor||'#94a3b8'}">${(u.name.match(/\((.+)\)/)||[,u.name])[1]}</span></td><td class="px-4 py-3 text-xs">${u.contact||'-'}</td><td class="px-4 py-3 text-xs">${u.email||'-'}</td><td class="px-4 py-3 text-xs font-black text-blue-600">${u.role==='Admin'?'전체':u.role==='Director'?'뷰':(u.permissions?.length||0)+'개'}</td><td class="px-4 py-3"><button onclick="router.showUserForm('${u.id}')" class="p-2 bg-slate-100 rounded-lg mr-1"><i data-lucide="edit-3" class="w-4 h-4"></i></button>${u.id!=='admin'?`<button onclick="router.delUser('${u.id}')" class="p-2 bg-red-50 text-red-500 rounded-lg"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`:''}</td></tr>`).join('')}</tbody></table></div>`;
     lucide.createIcons();
   }
-
+  
   showUserForm(uid=null) {
     const u = uid?store.user(uid):{id:'',pw:'',name:'',role:'Manager',contact:'',email:'',memo:'',permissions:[],tagColor:'#60a5fa'};
-    openModal(uid?'✏️ 이용자 수정':'🆕 신규 계정', `<form id="uf" class="space-y-4">
-      <div class="grid grid-cols-2 gap-3"><input name="id" value="${u.id}" placeholder="아이디" class="p-3 border rounded-xl font-bold" ${uid?'readonly':'required'}><input name="pw" value="${u.pw||''}" placeholder="비밀번호" class="p-3 border rounded-xl font-bold" required></div>
-      <div class="grid grid-cols-2 gap-3"><input name="name" value="${u.name}" placeholder="이름 (예: 박보람(맨투))" class="p-3 border rounded-xl font-bold" required><select name="role" class="p-3 border rounded-xl font-bold">${['Admin','Manager','Director'].map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
-      <div class="grid grid-cols-3 gap-3"><input name="contact" value="${u.contact||''}" placeholder="연락처" class="p-3 border rounded-xl font-bold"><input name="email" value="${u.email||''}" placeholder="이메일" class="p-3 border rounded-xl font-bold"><input type="color" name="tagColor" value="${u.tagColor||'#60a5fa'}" class="p-2 border rounded-xl h-12"></div>
-      <input name="memo" value="${u.memo||''}" placeholder="비고사항" class="w-full p-3 border rounded-xl font-bold">
-      <div class="bg-slate-50 p-4 rounded-xl"><p class="text-xs font-black text-slate-500 uppercase mb-3">🏠 매물 권한 (Manager만 해당)</p><div class="grid grid-cols-2 gap-2">${store.properties.map(p=>`<label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer"><input type="checkbox" name="perm_${p.id}" ${u.permissions?.includes(p.id)?'checked':''}><span class="text-xs font-bold">${p.name}</span></label>`).join('')}</div></div>
-      <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">${uid?'수정':'생성'}</button>
-    </form>`, 'max-w-2xl');
+    openModal(uid?'✏️ 이용자 수정':'🆕 신규 계정', `<form id="uf" class="space-y-4"><div class="grid grid-cols-2 gap-3"><input name="id" value="${u.id}" placeholder="아이디" class="p-3 border rounded-xl font-bold" ${uid?'readonly':'required'}><input name="pw" value="${u.pw||''}" placeholder="비밀번호" class="p-3 border rounded-xl font-bold" required></div><div class="grid grid-cols-2 gap-3"><input name="name" value="${u.name}" placeholder="이름 (예: 박보람(맨투))" class="p-3 border rounded-xl font-bold" required><select name="role" class="p-3 border rounded-xl font-bold">${['Admin','Manager','Director'].map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></div><div class="grid grid-cols-3 gap-3"><input name="contact" value="${u.contact||''}" placeholder="연락처" class="p-3 border rounded-xl font-bold"><input name="email" value="${u.email||''}" placeholder="이메일" class="p-3 border rounded-xl font-bold"><input type="color" name="tagColor" value="${u.tagColor||'#60a5fa'}" class="p-2 border rounded-xl h-12"></div><input name="memo" value="${u.memo||''}" placeholder="비고" class="w-full p-3 border rounded-xl font-bold"><div class="bg-slate-50 p-4 rounded-xl"><p class="text-xs font-black text-slate-500 uppercase mb-3">🏠 매물 권한</p><div class="grid grid-cols-2 gap-2">${store.properties.map(p=>`<label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer"><input type="checkbox" name="perm_${p.id}" ${u.permissions?.includes(p.id)?'checked':''}><span class="text-xs font-bold">${p.name}</span></label>`).join('')}</div></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">${uid?'수정':'생성'}</button></form>`, 'max-w-2xl');
     document.getElementById('uf').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -1398,60 +883,61 @@ class Router {
       catch(err) { toast('실패','error'); } finally { showLoading(false); }
     };
   }
-
+  
   async delUser(id) {
     if (!confirm('삭제?')) return;
     await store.delUser(id); await this.renderAdminTab();
   }
 
+  // ===== 프로필 변경 요청 =====
   admProfileReq(c) {
     const all = [...store.profileRequests].sort((a,b)=>b.id-a.id);
     const pending = all.filter(r=>r.status==='pending');
-    c.innerHTML = `<h2 class="text-3xl font-black mb-6">👤 프로필 변경 요청 (대기 ${pending.length}건)</h2>
-      ${all.length?all.map(r=>{
-        const sc = {pending:'bg-amber-100 text-amber-700 border-amber-300',approved:'bg-green-100 text-green-700 border-green-300',rejected:'bg-red-100 text-red-700 border-red-300'}[r.status];
-        const st = {pending:'⏳ 대기',approved:'✅ 승인',rejected:'❌ 반려'}[r.status];
-        const lbl = {name:'이름',contact:'연락처',email:'이메일',pw:'비밀번호'};
-        return `<div class="bg-white p-6 rounded-2xl border-2 ${sc} mb-4"><div class="flex items-center justify-between mb-4"><div><span class="px-3 py-1 rounded-full font-black text-xs">${st}</span><span class="ml-3 text-xs text-slate-400 font-bold">${r.requestedAt}</span></div><div><p class="font-black">${r.userName}</p></div></div><div class="bg-slate-50 p-4 rounded-xl mb-4">${Object.keys(r.changes).map(k=>{const ov=k==='pw'?'****':(r.original[k]||'(없음)');const nv=k==='pw'?'****':r.changes[k];return `<div class="flex items-center gap-2 text-sm py-1"><span class="font-black w-20 text-slate-600">${lbl[k]||k}</span><span class="text-slate-400 line-through">${ov}</span><i data-lucide="arrow-right" class="w-3 h-3 text-blue-500"></i><span class="text-blue-600 font-black">${nv}</span></div>`}).join('')}</div>${r.reason?`<div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3"><p class="text-xs font-black text-red-700">반려사유: ${r.reason}</p></div>`:''}${r.status==='pending'?`<div class="flex gap-2"><button onclick="router.approveReq(${r.id})" class="flex-1 bg-green-500 text-white py-3 rounded-xl font-black">✅ 승인</button><button onclick="router.rejectReq(${r.id})" class="flex-1 bg-red-500 text-white py-3 rounded-xl font-black">❌ 반려</button></div>`:`<p class="text-xs text-slate-400 font-bold">처리: ${r.processedAt}</p>`}</div>`;
-      }).join(''):'<div class="bg-white p-12 rounded-2xl border text-center text-slate-400"><i data-lucide="inbox" class="w-12 h-12 mx-auto mb-3"></i><p class="font-bold">요청 없음</p></div>'}`;
+    c.innerHTML = `<h2 class="text-3xl font-black mb-6">👤 프로필 변경 요청 (대기 ${pending.length}건)</h2>${all.length?all.map(r=>{const sc={pending:'bg-amber-100 text-amber-700 border-amber-300',approved:'bg-green-100 text-green-700 border-green-300',rejected:'bg-red-100 text-red-700 border-red-300'}[r.status];const st={pending:'⏳ 대기',approved:'✅ 승인',rejected:'❌ 반려'}[r.status];const lbl={name:'이름',contact:'연락처',email:'이메일',pw:'비밀번호'};return `<div class="bg-white p-6 rounded-2xl border-2 ${sc} mb-4"><div class="flex items-center justify-between mb-4"><div><span class="px-3 py-1 rounded-full font-black text-xs">${st}</span><span class="ml-3 text-xs text-slate-400 font-bold">${r.requestedAt}</span></div><div><p class="font-black">${r.userName}</p></div></div><div class="bg-slate-50 p-4 rounded-xl mb-4">${Object.keys(r.changes).map(k=>{const ov=k==='pw'?'****':(r.original[k]||'(없음)');const nv=k==='pw'?'****':r.changes[k];return `<div class="flex items-center gap-2 text-sm py-1"><span class="font-black w-20 text-slate-600">${lbl[k]||k}</span><span class="text-slate-400 line-through">${ov}</span><i data-lucide="arrow-right" class="w-3 h-3 text-blue-500"></i><span class="text-blue-600 font-black">${nv}</span></div>`}).join('')}</div>${r.reason?`<div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3"><p class="text-xs font-black text-red-700">반려사유: ${r.reason}</p></div>`:''}${r.status==='pending'?`<div class="flex gap-2"><button onclick="router.approveReq(${r.id})" class="flex-1 bg-green-500 text-white py-3 rounded-xl font-black">✅ 승인</button><button onclick="router.rejectReq(${r.id})" class="flex-1 bg-red-500 text-white py-3 rounded-xl font-black">❌ 반려</button></div>`:`<p class="text-xs text-slate-400 font-bold">처리: ${r.processedAt}</p>`}</div>`}).join(''):'<div class="bg-white p-12 rounded-2xl border text-center text-slate-400"><i data-lucide="inbox" class="w-12 h-12 mx-auto mb-3"></i><p class="font-bold">요청 없음</p></div>'}`;
     lucide.createIcons();
   }
   async approveReq(id){if(!confirm('승인?'))return;showLoading(true);try{await store.approveProfileChange(id);toast('승인','success');await this.renderAdminTab();this.renderAdminNav()}catch(e){toast('실패','error')}finally{showLoading(false)}}
   async rejectReq(id){const reason=prompt('반려 사유 (선택)')||'';showLoading(true);try{await store.rejectProfileChange(id,reason);toast('반려','warning');await this.renderAdminTab();this.renderAdminNav()}catch(e){toast('실패','error')}finally{showLoading(false)}}
 
+  // ===== 채팅 관리 =====
   admChats(c) {
     c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">💬 채팅 관리</h2><button onclick="router.admChatsMode=router.admChatsMode==='integrated'?'list':'integrated';router.renderAdminTab()" class="bg-slate-900 text-white px-5 py-3 rounded-xl font-black text-sm">${this.admChatsMode==='integrated'?'📋 리스트':'📊 통합'}</button></div>`;
     if (this.admChatsMode==='integrated') {
       c.innerHTML += `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>{const ch=store.chats.filter(x=>x.propId===p.id);return `<div class="bg-white p-4 rounded-2xl border"><h4 class="font-black mb-3 flex items-center gap-2">${p.name} ${ch.length?'<span class="w-2 h-2 bg-green-500 rounded-full"></span>':''}</h4><div class="h-60 overflow-y-auto scrollbar bg-slate-50 rounded-xl p-3 space-y-2 mb-2">${ch.length?ch.slice(-5).map(c=>`<div><p class="text-[9px] font-black text-slate-400">${c.sender}·${c.time.slice(5,16)}</p><p class="text-xs font-bold">${c.message}</p></div>`).join(''):'<p class="text-xs text-slate-400 text-center py-10">대화 없음</p>'}</div><button onclick="router.showChatBox(${p.id})" class="w-full bg-blue-600 text-white py-2 rounded-lg text-xs font-black">입장 & 멘트</button></div>`}).join('')}</div>`;
     } else {
-      c.innerHTML += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${store.properties.map(p=>{const ch=store.chats.filter(x=>x.propId===p.id);const last=ch[ch.length-1];return `<div onclick="router.showChatBox(${p.id})" class="bg-white p-5 rounded-2xl border hover:shadow-xl cursor-pointer flex items-center gap-4"><img src="${p.image}" class="w-16 h-16 rounded-xl object-cover"><div class="flex-1 min-w-0"><div class="flex items-center gap-2"><p class="font-black">${p.name}</p>${ch.length?'<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-[9px] font-black">최근대화</span>':''}</div><p class="text-xs text-slate-500 truncate mt-1">${last?last.sender+': '+last.message:'대화없음'}</p></div></div>`}).join('')}</div>`;
+      c.innerHTML += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${store.properties.map(p=>{const ch=store.chats.filter(x=>x.propId===p.id);const last=ch[ch.length-1];return `<div onclick="router.showChatBox(${p.id})" class="bg-white p-5 rounded-2xl border hover:shadow-xl cursor-pointer flex items-center gap-4"><img src="${p.image||(p.images?.[p.mainImage||0])||'https://via.placeholder.com/64'}" class="w-16 h-16 rounded-xl object-cover"><div class="flex-1 min-w-0"><div class="flex items-center gap-2"><p class="font-black">${p.name}</p>${ch.length?'<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-[9px] font-black">최근대화</span>':''}</div><p class="text-xs text-slate-500 truncate mt-1">${last?last.sender+': '+last.message:'대화없음'}</p></div></div>`}).join('')}</div>`;
     }
   }
 
+  // ===== 로그 관리 =====
   admLogs(c) {
     const specials = store.logs.filter(l=>l.special);
-    c.innerHTML = `<h2 class="text-3xl font-black mb-6">📋 로그 관리</h2>
-      ${specials.length?`<div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mb-6"><h3 class="font-black text-red-700 mb-3 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5"></i>🚨 특이사항 (${specials.length}건)</h3><div class="space-y-2">${specials.slice(0,10).map(l=>`<div class="bg-white p-3 rounded-lg"><p class="text-sm font-black text-red-700">${l.message}</p><p class="text-[10px] text-slate-400 font-bold mt-1">${l.time} · ${l.user}</p></div>`).join('')}</div></div>`:''}
-      <div class="bg-white rounded-2xl border overflow-hidden"><div class="p-5 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">전체 활동 로그 (${store.logs.length})</h3></div><div class="divide-y max-h-[600px] overflow-y-auto scrollbar">${store.logs.slice(0,100).map(l=>`<div class="p-4 flex items-center gap-3 hover:bg-slate-50 ${l.special?'bg-red-50/30':''}"><div class="w-2 h-2 rounded-full ${l.special?'bg-red-500':'bg-slate-300'}"></div><div class="flex-1 min-w-0"><p class="text-sm font-bold truncate">${l.message}</p><p class="text-[10px] text-slate-400 font-bold mt-0.5">${l.time} · ${l.user}</p></div>${l.special?'<span class="px-2 py-0.5 bg-red-500 text-white rounded text-[9px] font-black">특이</span>':''}</div>`).join('')}</div></div>`;
+    c.innerHTML = `<h2 class="text-3xl font-black mb-6">📋 로그 관리</h2>${specials.length?`<div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mb-6"><h3 class="font-black text-red-700 mb-3 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5"></i>🚨 특이사항 (${specials.length}건)</h3><div class="space-y-2">${specials.slice(0,10).map(l=>`<div class="bg-white p-3 rounded-lg"><p class="text-sm font-black text-red-700">${l.message}</p><p class="text-[10px] text-slate-400 font-bold mt-1">${l.time} · ${l.user}</p></div>`).join('')}</div></div>`:''}<div class="bg-white rounded-2xl border overflow-hidden"><div class="p-5 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">전체 활동 로그 (${store.logs.length})</h3></div><div class="divide-y max-h-[600px] overflow-y-auto scrollbar">${store.logs.slice(0,100).map(l=>`<div class="p-4 flex items-center gap-3 hover:bg-slate-50 ${l.special?'bg-red-50/30':''}"><div class="w-2 h-2 rounded-full ${l.special?'bg-red-500':'bg-slate-300'}"></div><div class="flex-1 min-w-0"><p class="text-sm font-bold truncate">${l.message}</p><p class="text-[10px] text-slate-400 font-bold mt-0.5">${l.time} · ${l.user}</p></div>${l.special?'<span class="px-2 py-0.5 bg-red-500 text-white rounded text-[9px] font-black">특이</span>':''}</div>`).join('')}</div></div>`;
     lucide.createIcons();
   }
 
+  // ===== 직원 관리 (월별 캘린더 + 리스트) =====
   admStaff(c) {
-    const now = new Date();
-    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">👷 직원 관리</h2><div class="flex gap-2"><div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.staffMode='cal';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.staffMode!=='list'?'bg-white shadow':'text-slate-500'}">캘린더</button><button onclick="router.staffMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.staffMode==='list'?'bg-white shadow':'text-slate-500'}">리스트</button></div><button onclick="router.showScheduleForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄</button></div></div>`;
+    const cur = this._staffDate;
+    const year = cur.getFullYear(), month = cur.getMonth();
+    const allSched = store.schedule.sort((a,b)=>a.date.localeCompare(b.date));
+    const monthSched = allSched.filter(s => s.date.startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
+    
+    c.innerHTML = `<div class="flex justify-between items-center mb-6 flex-wrap gap-3"><h2 class="text-3xl font-black">👷 직원 관리</h2><div class="flex gap-2 items-center"><button onclick="router._staffDate.setMonth(router._staffDate.getMonth()-1);router.renderAdminTab()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router._staffDate.setMonth(router._staffDate.getMonth()+1);router.renderAdminTab()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button onclick="router._staffDate=new Date();router.renderAdminTab()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button><div class="bg-slate-100 rounded-xl p-1 flex ml-2"><button onclick="router.staffMode='cal';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.staffMode!=='list'?'bg-white shadow':'text-slate-500'}">캘린더</button><button onclick="router.staffMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.staffMode==='list'?'bg-white shadow':'text-slate-500'}">리스트</button></div><button onclick="router.showScheduleForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄</button></div></div>`;
+    
     if (this.staffMode==='list') {
       c.innerHTML += `<div class="bg-white rounded-2xl border overflow-hidden mb-6"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">직원 리스트</h3></div><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['No.','태그','이름','역할','연락처','이메일','담당','비고'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${store.users.filter(u=>u.role!=='Admin').map((u,i)=>`<tr><td class="px-4 py-3 font-black">${i+1}</td><td class="px-4 py-3">${mgrTag(u.id)}</td><td class="px-4 py-3 font-black">${u.name}</td><td class="px-4 py-3 text-xs font-black">${u.role}</td><td class="px-4 py-3 text-xs font-mono">${u.contact||'-'}</td><td class="px-4 py-3 text-xs">${u.email||'-'}</td><td class="px-4 py-3 text-xs font-bold text-blue-600">${u.permissions?.length||0}개</td><td class="px-4 py-3 text-xs text-slate-500">${u.memo||'-'}</td></tr>`).join('')}</tbody></table></div>
-      <div class="bg-white rounded-2xl border overflow-hidden"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">스케줄 리스트</h3></div><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['일시','담당자','숙소','업무','알람','메모','관리'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${[...store.schedule].sort((a,b)=>a.date.localeCompare(b.date)).map(s=>`<tr><td class="px-4 py-3 font-black">${s.date} ${s.time}</td><td class="px-4 py-3">${s.staff}</td><td class="px-4 py-3 text-xs">${store.prop(s.propId)?.name||'-'}</td><td class="px-4 py-3">${s.task}</td><td class="px-4 py-3 text-xs">${(s.alarm||[]).map(a=>a+'분').join(', ')||'없음'}</td><td class="px-4 py-3 text-xs text-slate-500">${s.memo||'-'}</td><td class="px-4 py-3"><button onclick="router.delSchedule(${s.id})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join('')}</tbody></table></div>`;
+      <div class="bg-white rounded-2xl border overflow-hidden"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">📋 ${year}년 ${month+1}월 스케줄 리스트 (${monthSched.length}건)</h3></div><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['일시','담당자','숙소','업무','알람','메모','관리'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${monthSched.length?monthSched.map(s=>`<tr><td class="px-4 py-3 font-black">${s.date} ${s.time}</td><td class="px-4 py-3">${s.staff}</td><td class="px-4 py-3 text-xs">${store.prop(s.propId)?.name||'-'}</td><td class="px-4 py-3">${s.task}</td><td class="px-4 py-3 text-xs">${(s.alarm||[]).map(a=>a+'분').join(', ')||'없음'}</td><td class="px-4 py-3 text-xs text-slate-500">${s.memo||'-'}</td><td class="px-4 py-3"><button onclick="router.delScheduleAdm(${s.id})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join(''):'<tr><td colspan="7" class="text-center py-8 text-slate-400 font-bold">이번 달 스케줄 없음</td></tr>'}</tbody></table></div>`;
     } else {
-      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      const first = new Date(year, month, 1);
       const startDow = first.getDay();
-      const days = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
-      let html = `<div class="bg-white p-6 rounded-2xl border"><h3 class="text-xl font-black mb-4">${now.getFullYear()}년 ${now.getMonth()+1}월 직원 스케줄</h3><div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">${['일','월','화','수','목','금','토'].map(d=>`<div class="text-center py-2">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">`;
+      const days = new Date(year, month+1, 0).getDate();
+      let html = `<div class="bg-white p-6 rounded-2xl border"><h3 class="text-xl font-black mb-4">${year}년 ${month+1}월 직원 스케줄</h3><div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">${['일','월','화','수','목','금','토'].map(d=>`<div class="text-center py-2">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">`;
       for (let i=0; i<startDow; i++) html += `<div class="min-h-[110px] bg-slate-50/50 rounded-lg"></div>`;
       for (let d=1; d<=days; d++) {
-        const ds = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const sch = store.schedule.filter(s=>s.date===ds);
-        html += `<div class="min-h-[110px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${sch.map(s=>`<div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 bg-purple-100 text-purple-700">${s.time} ${s.task}</div>`).join('')}</div>`;
+        const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const sch = monthSched.filter(s=>s.date===ds);
+        html += `<div class="min-h-[110px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${sch.slice(0,3).map(s=>`<div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 bg-purple-100 text-purple-700">${s.time} ${s.staff.slice(0,3)} ${s.task.slice(0,5)}</div>`).join('')}${sch.length>3?`<div class="text-[8px] text-slate-400 mt-0.5">+${sch.length-3}건</div>`:''}</div>`;
       }
       html += `</div></div>`;
       c.innerHTML += html;
@@ -1460,57 +946,45 @@ class Router {
   }
 
   showScheduleForm() {
-    openModal('📅 스케줄 등록', `<form id="sf" class="space-y-4">
-      <div class="grid grid-cols-2 gap-3"><input type="date" name="date" value="${todayStr()}" class="p-3 border rounded-xl font-bold" required><input type="time" name="time" value="10:00" class="p-3 border rounded-xl font-bold" required></div>
-      <select name="staff" class="w-full p-3 border rounded-xl font-bold" required>${store.users.filter(u=>u.role!=='Admin').map(u=>`<option>${u.name}</option>`).join('')}</select>
-      <select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
-      <input name="task" placeholder="업무 (예: 퇴실청소)" class="w-full p-3 border rounded-xl font-bold" required>
-      <div class="bg-slate-50 p-4 rounded-xl"><p class="text-xs font-black text-slate-500 uppercase mb-2">🔔 알람 (복수)</p><div class="flex gap-2">${[5,15,30,60].map(m=>`<label class="flex items-center gap-1 px-3 py-2 bg-white rounded-lg cursor-pointer font-bold text-xs"><input type="checkbox" name="a${m}"> ${m}분</label>`).join('')}</div></div>
-      <input name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold">
-      <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">등록 & 알림</button>
-    </form>`, 'max-w-xl');
+    openModal('📅 스케줄 등록', `<form id="sf" class="space-y-4"><div class="grid grid-cols-2 gap-3"><input type="date" name="date" value="${todayStr()}" class="p-3 border rounded-xl font-bold" required><input type="time" name="time" value="10:00" class="p-3 border rounded-xl font-bold" required></div><select name="staff" class="w-full p-3 border rounded-xl font-bold" required>${store.users.filter(u=>u.role!=='Admin').map(u=>`<option>${u.name}</option>`).join('')}</select><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><input name="task" placeholder="업무 (예: 퇴실청소)" class="w-full p-3 border rounded-xl font-bold" required><div class="bg-slate-50 p-4 rounded-xl"><p class="text-xs font-black text-slate-500 uppercase mb-2">🔔 알람 (복수)</p><div class="flex gap-2">${[5,15,30,60].map(m=>`<label class="flex items-center gap-1 px-3 py-2 bg-white rounded-lg cursor-pointer font-bold text-xs"><input type="checkbox" name="a${m}"> ${m}분</label>`).join('')}</div></div><input name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold"><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">등록 & 알림 발송</button></form>`, 'max-w-xl');
     document.getElementById('sf').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
-      const alarm = [];
-      [5,15,30,60].forEach(m => { if (d['a'+m]) alarm.push(m); delete d['a'+m]; });
+      const alarm = []; [5,15,30,60].forEach(m => { if (d['a'+m]) alarm.push(m); delete d['a'+m]; });
       d.alarm = alarm;
       showLoading(true);
       try { await store.addSchedule(d); toast('등록 + 담당자 알림','success'); closeModal(); await this.renderAdminTab(); }
       catch(err) { toast('실패','error'); } finally { showLoading(false); }
     };
   }
-
-  async delSchedule(id) {
+  
+  async delScheduleAdm(id) {
     if (!confirm('삭제?')) return;
     await store.delSchedule(id); await this.renderAdminTab();
   }
 
+  // ===== 기타 관리 (인터넷 + 물품 + 매물 다중 연결) =====
   admEtc(c) {
-    c.innerHTML = `<h2 class="text-3xl font-black mb-2">📦 기타 관리</h2><p class="text-slate-500 mb-6 font-medium">인터넷 관리 & 물품추천 관리</p>
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4"><h3 class="font-black flex items-center gap-2"><i data-lucide="wifi" class="w-5 h-5 text-blue-600"></i>인터넷 관리</h3><button onclick="router.showInternetForm()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div>
-          <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 text-xs font-bold text-blue-700">🔗 월비용은 지출관리와 자동 양방향 연동</div>
-          <div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50 font-black text-slate-400 uppercase"><tr>${['숙소','통신사','요금제','월비용 🔗','설치일','약정','WiFi','관리'].map(h=>`<th class="px-2 py-2 text-left">${h}</th>`).join('')}</tr></thead><tbody class="divide-y">${store.internet.map(n=>`<tr><td class="px-2 py-2 font-black">${store.prop(n.propId)?.name||'-'}</td><td class="px-2 py-2 font-bold">${n.provider}</td><td class="px-2 py-2">${n.plan}</td><td class="px-2 py-2 text-right font-black text-red-500">${fmt(n.monthly)}</td><td class="px-2 py-2 text-[10px]">${n.installDate}</td><td class="px-2 py-2 text-[10px]">${n.contract}</td><td class="px-2 py-2 font-mono text-[10px]">${n.wifiId||''}<br/>${n.wifiPw||''}</td><td class="px-2 py-2 text-center"><button onclick="router.showInternetForm(${n.id})" class="p-1.5 bg-slate-100 rounded-lg mr-1"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delInternet(${n.id})" class="p-1.5 bg-red-50 text-red-500 rounded-lg"><i data-lucide="trash-2" class="w-3 h-3"></i></button></td></tr>`).join('')}</tbody><tfoot class="bg-slate-900 text-white font-black"><tr><td colspan="3" class="px-2 py-2 text-right">월비용 합계</td><td class="px-2 py-2 text-right">${fmt(store.internet.reduce((s,n)=>s+n.monthly,0))}</td><td colspan="4"></td></tr></tfoot></table></div>
-        </div>
-        <div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4"><h3 class="font-black flex items-center gap-2"><i data-lucide="shopping-bag" class="w-5 h-5 text-green-600"></i>물품 추천 관리</h3><button onclick="router.showProductForm()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div>
-          <div class="space-y-2 max-h-[500px] overflow-y-auto scrollbar">${store.products.length?store.products.map(p=>`<div class="p-3 bg-slate-50 rounded-xl flex items-center gap-3 hover:shadow-md transition"><img src="${p.image||'https://via.placeholder.com/60'}" onerror="this.src='https://via.placeholder.com/60'" class="w-14 h-14 rounded-lg object-cover border"><div class="flex-1 min-w-0"><div class="flex items-center gap-2 mb-1"><span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-black text-[10px]">${p.category}</span>${p.vendor?`<span class="text-[10px] text-slate-400 font-bold">${p.vendor}</span>`:''}</div><p class="font-black text-sm truncate">${p.name}</p><p class="text-[10px] text-slate-400 font-bold truncate">${p.memo||'-'}</p></div><div class="text-right"><p class="font-black text-red-500 text-sm">${fmt(p.price)}</p><div class="flex gap-1 mt-1">${p.url?`<a href="${p.url}" target="_blank" class="p-1.5 bg-white rounded-lg text-blue-600"><i data-lucide="external-link" class="w-3 h-3"></i></a>`:''}<button onclick="router.showProductForm(${p.id})" class="p-1.5 bg-white rounded-lg"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delProduct(${p.id})" class="p-1.5 bg-white rounded-lg text-red-500"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>`).join(''):'<p class="text-center text-slate-400 py-12 font-bold">+ 물품 추가 버튼을 눌러주세요</p>'}</div>
-        </div>
-      </div>`;
+    c.innerHTML = `<h2 class="text-3xl font-black mb-2">📦 기타 관리</h2><p class="text-slate-500 mb-6 font-medium">인터넷 관리 + 물품 추천 (매물 다중 연결)</p>
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4"><h3 class="font-black flex items-center gap-2"><i data-lucide="wifi" class="w-5 h-5 text-blue-600"></i>인터넷 관리</h3><button onclick="router.showInternetForm()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div>
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 text-xs font-bold text-blue-700">🔗 월비용은 지출관리와 자동 양방향 연동</div>
+        <div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50 font-black text-slate-400 uppercase"><tr>${['숙소','통신사','요금제','월비용 🔗','설치일','약정','WiFi','관리'].map(h=>`<th class="px-2 py-2 text-left">${h}</th>`).join('')}</tr></thead><tbody class="divide-y">${store.internet.map(n=>`<tr><td class="px-2 py-2 font-black">${store.prop(n.propId)?.name||'-'}</td><td class="px-2 py-2 font-bold">${n.provider}</td><td class="px-2 py-2">${n.plan}</td><td class="px-2 py-2 text-right font-black text-red-500">${fmt(n.monthly)}</td><td class="px-2 py-2 text-[10px]">${n.installDate}</td><td class="px-2 py-2 text-[10px]">${n.contract}</td><td class="px-2 py-2 font-mono text-[10px]">${n.wifiId||''}<br/>${n.wifiPw||''}</td><td class="px-2 py-2 text-center"><button onclick="router.showInternetForm(${n.id})" class="p-1.5 bg-slate-100 rounded-lg mr-1"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delInternet(${n.id})" class="p-1.5 bg-red-50 text-red-500 rounded-lg"><i data-lucide="trash-2" class="w-3 h-3"></i></button></td></tr>`).join('')}</tbody><tfoot class="bg-slate-900 text-white font-black"><tr><td colspan="3" class="px-2 py-2 text-right">월비용 합계</td><td class="px-2 py-2 text-right">${fmt(store.internet.reduce((s,n)=>s+n.monthly,0))}</td><td colspan="4"></td></tr></tfoot></table></div>
+      </div>
+      <div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4"><h3 class="font-black flex items-center gap-2"><i data-lucide="shopping-bag" class="w-5 h-5 text-green-600"></i>물품 추천 (매물 다중 연결)</h3><button onclick="router.showProductForm()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div>
+        <div class="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-xs font-bold text-green-700">💡 각 물품에 적합한 매물을 다중 선택하여 연결할 수 있습니다</div>
+        <div class="space-y-2 max-h-[500px] overflow-y-auto scrollbar">${store.products.length?store.products.map(p=>{
+          const linkedProps = (p.propIds||[]).map(id=>store.prop(id)).filter(Boolean);
+          return `<div class="p-3 bg-slate-50 rounded-xl flex items-center gap-3 hover:shadow-md transition"><img src="${p.image||'https://via.placeholder.com/60'}" onerror="this.src='https://via.placeholder.com/60'" class="w-14 h-14 rounded-lg object-cover border"><div class="flex-1 min-w-0"><div class="flex items-center gap-2 mb-1"><span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-black text-[10px]">${p.category}</span>${p.vendor?`<span class="text-[10px] text-slate-400 font-bold">${p.vendor}</span>`:''}</div><p class="font-black text-sm truncate">${p.name}</p><div class="flex flex-wrap gap-1 mt-1">${linkedProps.length?linkedProps.map(lp=>`<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-black">${lp.name}</span>`).join(''):'<span class="text-[10px] text-slate-400">매물 미연결</span>'}</div><p class="text-[10px] text-slate-400 font-bold truncate mt-1">${p.memo||'-'}</p></div><div class="text-right"><p class="font-black text-red-500 text-sm">${fmt(p.price)}</p><div class="flex gap-1 mt-1">${p.url?`<a href="${p.url}" target="_blank" class="p-1.5 bg-white rounded-lg text-blue-600"><i data-lucide="external-link" class="w-3 h-3"></i></a>`:''}<button onclick="router.showProductForm(${p.id})" class="p-1.5 bg-white rounded-lg"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delProduct(${p.id})" class="p-1.5 bg-white rounded-lg text-red-500"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>`;
+        }).join(''):'<p class="text-center text-slate-400 py-12 font-bold">+ 추가 버튼으로 등록</p>'}</div>
+      </div>
+    </div>`;
     lucide.createIcons();
   }
 
   showInternetForm(nid=null) {
     const n = nid?store.internet.find(x=>x.id===parseInt(nid)):{id:'',propId:store.properties[0]?.id,provider:'KT',plan:'기가 인터넷',monthly:33000,installDate:todayStr(),contract:'3년',wifiId:'',wifiPw:''};
-    openModal(nid?'✏️ 인터넷 수정':'🆕 인터넷 등록', `<form id="nf" class="space-y-4">
-      <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs font-bold text-blue-700">🔗 월비용 수정 시 지출관리에 자동 반영됩니다.</div>
-      <select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}" ${n.propId===p.id?'selected':''}>${p.name}</option>`).join('')}</select>
-      <div class="grid grid-cols-2 gap-3"><input name="provider" value="${n.provider}" placeholder="통신사" class="p-3 border rounded-xl font-bold" required><input name="plan" value="${n.plan}" placeholder="요금제" class="p-3 border rounded-xl font-bold" required></div>
-      <div><label class="text-[10px] font-black text-red-500 uppercase">월 비용 (🔗 자동연동)</label><input type="number" name="monthly" value="${n.monthly}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl mt-1" required></div>
-      <div class="grid grid-cols-2 gap-3"><div><label class="text-[10px] font-black text-slate-400 uppercase">설치일</label><input type="date" name="installDate" value="${n.installDate}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">약정</label><input name="contract" value="${n.contract}" class="w-full p-3 border rounded-xl font-bold mt-1"></div></div>
-      <div class="grid grid-cols-2 gap-3"><input name="wifiId" value="${n.wifiId||''}" placeholder="WiFi SSID" class="p-3 border rounded-xl font-bold font-mono"><input name="wifiPw" value="${n.wifiPw||''}" placeholder="WiFi 비밀번호" class="p-3 border rounded-xl font-bold font-mono"></div>
-      <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">${nid?'수정':'등록'}</button>
-    </form>`, 'max-w-2xl');
+    openModal(nid?'✏️ 인터넷 수정':'🆕 인터넷 등록', `<form id="nf" class="space-y-4"><div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs font-bold text-blue-700">🔗 월비용 수정 시 지출관리에 자동 반영</div><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}" ${n.propId===p.id?'selected':''}>${p.name}</option>`).join('')}</select><div class="grid grid-cols-2 gap-3"><input name="provider" value="${n.provider}" placeholder="통신사" class="p-3 border rounded-xl font-bold" required><input name="plan" value="${n.plan}" placeholder="요금제" class="p-3 border rounded-xl font-bold" required></div><div><label class="text-[10px] font-black text-red-500 uppercase">월 비용 (🔗 자동연동)</label><input type="number" name="monthly" value="${n.monthly}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl mt-1" required></div><div class="grid grid-cols-2 gap-3"><div><label class="text-[10px] font-black text-slate-400 uppercase">설치일</label><input type="date" name="installDate" value="${n.installDate}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">약정</label><input name="contract" value="${n.contract}" class="w-full p-3 border rounded-xl font-bold mt-1"></div></div><div class="grid grid-cols-2 gap-3"><input name="wifiId" value="${n.wifiId||''}" placeholder="WiFi SSID" class="p-3 border rounded-xl font-bold font-mono"><input name="wifiPw" value="${n.wifiPw||''}" placeholder="WiFi 비밀번호" class="p-3 border rounded-xl font-bold font-mono"></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">${nid?'수정':'등록'}</button></form>`, 'max-w-2xl');
     document.getElementById('nf').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -1520,7 +994,7 @@ class Router {
       catch(err) { toast('실패','error'); } finally { showLoading(false); }
     };
   }
-
+  
   async delInternet(id) {
     if (!confirm('삭제 시 지출도 함께 삭제됩니다. 계속?')) return;
     showLoading(true);
@@ -1528,29 +1002,27 @@ class Router {
     catch(e) { toast('실패','error'); } finally { showLoading(false); }
   }
 
+  // ===== 물품 폼 (매물 다중 선택 연결) =====
   showProductForm(pid=null) {
-    const p = pid?store.products.find(x=>x.id===parseInt(pid)):{id:'',category:'침구',name:'',price:10000,url:'',image:'',memo:'',vendor:'쿠팡'};
+    const p = pid?store.products.find(x=>x.id===parseInt(pid)):{id:'',category:'침구',name:'',price:10000,url:'',image:'',memo:'',vendor:'쿠팡',propIds:[]};
+    if (!p.propIds) p.propIds = [];
     const cats = ['침구','욕실','주방','가전','소모품','청소용품','편의용품','인테리어','기타'];
-    openModal(pid?'✏️ 물품 수정':'🆕 물품 등록', `<form id="prf" class="space-y-4">
-      <div class="grid grid-cols-2 gap-3"><select name="category" class="p-3 border rounded-xl font-bold" required>${cats.map(c=>`<option ${p.category===c?'selected':''}>${c}</option>`).join('')}</select><input name="vendor" value="${p.vendor||''}" placeholder="판매처" class="p-3 border rounded-xl font-bold"></div>
-      <input name="name" value="${p.name}" placeholder="상품명" class="w-full p-3 border rounded-xl font-bold" required>
-      <div><label class="text-[10px] font-black text-red-500 uppercase">가격</label><input type="number" name="price" value="${p.price}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl mt-1" required></div>
-      <input name="image" value="${p.image||''}" placeholder="이미지 URL" class="w-full p-3 border rounded-xl font-bold">
-      <input name="url" value="${p.url||''}" placeholder="구매 링크" class="w-full p-3 border rounded-xl font-bold">
-      <textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl h-20 font-bold">${p.memo||''}</textarea>
-      ${p.image?`<div class="bg-slate-50 p-3 rounded-xl"><p class="text-[10px] font-black text-slate-400 uppercase mb-2">미리보기</p><img src="${p.image}" onerror="this.style.display='none'" class="w-24 h-24 object-cover rounded-lg"></div>`:''}
-      <button class="w-full bg-green-600 text-white py-4 rounded-xl font-black uppercase">${pid?'수정':'등록'}</button>
-    </form>`, 'max-w-2xl');
+    openModal(pid?'✏️ 물품 수정':'🆕 물품 등록', `<form id="prf" class="space-y-4"><div class="grid grid-cols-2 gap-3"><select name="category" class="p-3 border rounded-xl font-bold" required>${cats.map(c=>`<option ${p.category===c?'selected':''}>${c}</option>`).join('')}</select><input name="vendor" value="${p.vendor||''}" placeholder="판매처" class="p-3 border rounded-xl font-bold"></div><input name="name" value="${p.name}" placeholder="상품명" class="w-full p-3 border rounded-xl font-bold" required><div><label class="text-[10px] font-black text-red-500 uppercase">가격</label><input type="number" name="price" value="${p.price}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl mt-1" required></div><div><label class="text-[10px] font-black text-slate-400 uppercase">이미지 URL</label><input name="image" value="${p.image||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black text-blue-500 uppercase">구매 링크 URL</label><input name="url" value="${p.url||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl h-20 font-bold">${p.memo||''}</textarea>
+    <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4"><p class="text-xs font-black text-amber-700 uppercase mb-3">🏠 적합한 매물 선택 (다중 선택 가능)</p><div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto scrollbar">${store.properties.map(prop=>`<label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer hover:bg-amber-100"><input type="checkbox" name="prop_${prop.id}" ${p.propIds.includes(prop.id)?'checked':''}><span class="text-xs font-bold">${prop.name}</span></label>`).join('')}</div><p class="text-[10px] text-slate-400 mt-2">💡 어느 매물에 사용하면 적합한지 선택하세요</p></div>
+    ${p.image?`<div class="bg-slate-50 p-3 rounded-xl"><p class="text-[10px] font-black text-slate-400 uppercase mb-2">미리보기</p><img src="${p.image}" onerror="this.style.display='none'" class="w-24 h-24 object-cover rounded-lg"></div>`:''}<button class="w-full bg-green-600 text-white py-4 rounded-xl font-black uppercase">${pid?'수정':'등록'}</button></form>`, 'max-w-2xl');
     document.getElementById('prf').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
+      const propIds = [];
+      store.properties.forEach(prop => { if (d['prop_'+prop.id]) propIds.push(prop.id); delete d['prop_'+prop.id]; });
+      d.propIds = propIds;
       if (pid) d.id = pid;
       showLoading(true);
       try { await store.upsertProduct(d); toast('완료','success'); closeModal(); await this.renderAdminTab(); }
       catch(err) { toast('실패','error'); } finally { showLoading(false); }
     };
   }
-
+  
   async delProduct(id) {
     if (!confirm('삭제?')) return;
     await store.delProduct(id); await this.renderAdminTab();

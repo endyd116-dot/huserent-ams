@@ -3,11 +3,14 @@ window.UI = {
     const u = store.currentUser;
     const isAdmin = u.role === 'Admin';
     const pending = isAdmin ? store.pendingProfileRequests().length : 0;
+    const unread = store.getMyUnreadCount();
     const item = (k,icon,label,onclick,b) => `<a onclick="${onclick}" class="flex items-center gap-3 px-5 py-3.5 rounded-2xl cursor-pointer transition ${active===k?'bg-blue-600 text-white font-bold shadow-xl':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${icon}" class="w-5 h-5"></i><span class="text-sm flex-1">${label}</span>${b?`<span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">${b}</span>`:''}</a>`;
     return `<aside class="hidden lg:flex w-72 flex-col bg-slate-900 text-white p-6 sticky top-0 h-screen">
-      <div class="mb-8 px-2 cursor-pointer" onclick="router.go('home')"><h1 class="text-2xl font-black">QJ<span class="text-blue-500">.</span>PMS</h1><p class="text-[9px] text-slate-500 font-bold uppercase mt-1">v2.0 Cloud</p></div>
+      <div class="mb-8 px-2 cursor-pointer" onclick="router.go('home')"><h1 class="text-2xl font-black">QJ<span class="text-blue-500">.</span>PMS</h1><p class="text-[9px] text-slate-500 font-bold uppercase mt-1">v3.0 Cloud + AI</p></div>
       <nav class="space-y-1 flex-1 overflow-y-auto scrollbar">
         ${item('home','layout-grid','내 숙소 목록',"router.go('home')")}
+        ${item('mySchedule','calendar','내 스케줄',"router.go('mySchedule')")}
+        ${item('myNotifs','bell','내 알람',`router.showNotifications()`,unread)}
         ${isAdmin?item('admin','shield-check','관리자 오피스',"router.go('admin')",pending):''}
       </nav>
       <div class="mt-4 pt-4 border-t border-white/10">
@@ -38,8 +41,9 @@ window.UI = {
     const hasB = getBookingForDate(p.id, todayStr());
     const statusText = hasB?'투숙중':p.status==='cleaning'?'청소중':'공실';
     const statusCol = hasB?'bg-blue-600':p.status==='cleaning'?'bg-amber-500':'bg-green-500';
+    const img = p.image || (p.images && p.images[p.mainImage||0]) || '';
     return `<div class="bg-white rounded-3xl shadow-sm overflow-hidden border transition-all group ${access?'hover:shadow-2xl hover:-translate-y-1 cursor-pointer':'grayscale opacity-60'}" ${access?`onclick="router.showPropActions(${p.id})"`:`onclick="toast('권한이 없습니다','error')"`}>
-      <div class="relative h-48"><img src="${p.image}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+      <div class="relative h-48"><img src="${img}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
         <div class="absolute top-4 left-4 flex gap-2"><span class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${statusCol} text-white">${statusText}</span><span class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-white/90">${p.group||'-'}</span></div>
         ${!access?`<div class="absolute inset-0 bg-slate-900/70 flex items-center justify-center"><i data-lucide="lock" class="w-8 h-8 text-white"></i></div>`:''}
       </div>
