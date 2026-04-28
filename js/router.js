@@ -203,38 +203,51 @@ class Router {
     }
   }
 
-  showBookingForm(propId, booking=null, prefill=null) {
+    showBookingForm(propId, booking=null, prefill=null) {
     const p = store.prop(propId);
     const b = booking || {};
     const isEdit = !!booking;
-    openModal(`${isEdit?'✏️':'🆕'} ${p.name}`, `
+    openModal(`${isEdit?'✏️':'🆕'} ${p.name} - ${isEdit?'예약 수정':'신규 예약'}`, `
       <form id="bk-form" class="space-y-5">
         <div class="grid grid-cols-2 gap-4">
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">체크인</label><input type="date" name="checkIn" value="${b.checkIn||prefill||todayStr()}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
-          <div><label class="text-[10px] font-black text-slate-400 uppercase">체크아웃</label><input type="date" name="checkOut" value="${b.checkOut||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">체크인</label><input type="date" name="checkIn" value="${b.checkIn||prefill||todayStr()}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">체크아웃</label><input type="date" name="checkOut" value="${b.checkOut||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
         </div>
         <div class="grid grid-cols-2 gap-4">
-          <input name="guest" value="${b.guest||''}" placeholder="예약자" class="w-full p-3 border rounded-xl font-bold" required>
-          <input name="contact" value="${b.contact||''}" placeholder="연락처" class="w-full p-3 border rounded-xl font-bold" required>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">예약자</label><input type="text" name="guest" value="${b.guest||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">연락처</label><input type="text" name="contact" value="${b.contact||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
         </div>
         <div class="grid grid-cols-3 gap-4">
-          <input name="nationality" value="${b.nationality||'한국'}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold">
-          <input type="number" name="people" value="${b.people||2}" min="1" placeholder="인원" class="w-full p-3 border rounded-xl font-bold">
-          <select name="platform" class="w-full p-3 border rounded-xl font-bold">${store.platforms.map(pl=>`<option ${b.platform===pl.name?'selected':''}>${pl.name}</option>`).join('')}</select>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">국적</label><input type="text" name="nationality" value="${b.nationality||'한국'}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">인원</label><input type="number" name="people" value="${b.people||2}" min="1" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">플랫폼</label><select name="platform" class="w-full p-3 border rounded-xl font-bold mt-1">${store.platforms.map(pl=>`<option ${b.platform===pl.name?'selected':''}>${pl.name}</option>`).join('')}</select></div>
         </div>
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl text-white">
-          <div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">원가 (1박)</span><span class="font-black">${fmt(p.cost)}</span></div>
-          <div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">기본가 (1박)</span><span class="font-black">${fmt(p.price)}</span></div>
-          <div class="flex justify-between mb-4 text-xs" id="ni"><span class="opacity-80 font-bold">숙박 × 원가</span><span class="font-black" id="ct">₩0</span></div>
-          <input type="number" name="price" value="${b.price||p.price}" placeholder="최종 가격" class="w-full p-4 bg-white/10 border-2 border-white/20 rounded-xl text-2xl font-black outline-none focus:border-white" required>
+        <div class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl text-white shadow-xl">
+          <div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">원가 (1박 기준)</span><span class="font-black">${fmt(p.cost)}</span></div>
+          <div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">기본 판매가 (1박)</span><span class="font-black">${fmt(p.price)}</span></div>
+          <div class="flex justify-between mb-2 text-xs" id="ni"><span class="opacity-80 font-bold">숙박일 × 원가</span><span class="font-black" id="ct">₩0</span></div>
+          <div class="flex justify-between mb-4 text-xs" id="suggest-info"><span class="opacity-80 font-bold">기본가 × 숙박일 (참고)</span><span class="font-black" id="suggest-price">₩0</span></div>
+          <div class="border-t border-white/20 pt-4">
+            <label class="text-[10px] font-black uppercase opacity-80">최종 가격 (수동입력 - 할인/연박 반영)</label>
+            <input type="number" name="price" value="${b.price||p.price}" class="w-full mt-2 p-4 bg-white/10 border-2 border-white/20 rounded-xl text-2xl font-black outline-none focus:border-white" required>
+          </div>
         </div>
-        <textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold h-20">${b.memo||''}</textarea>
-        <div class="flex gap-3"><button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black">${isEdit?'예약 수정':'예약 등록'}</button>${isEdit?`<button type="button" onclick="router.deleteBooking(${booking.id})" class="px-8 bg-red-50 text-red-500 rounded-xl font-black">예약 취소</button>`:''}</div>
+        <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">메모</label><textarea name="memo" placeholder="예약 특이사항을 입력하세요..." class="w-full p-3 border rounded-xl font-bold mt-1 h-20">${b.memo||''}</textarea></div>
+        <div class="flex gap-3 pt-4 border-t">
+          <button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black">${isEdit?'예약 수정':'예약 등록'}</button>
+          ${isEdit?`<button type="button" onclick="router.deleteBooking(${booking.id})" class="px-8 bg-red-50 text-red-500 rounded-xl font-black">예약 취소</button>`:''}
+        </div>
       </form>`, 'max-w-3xl');
     const f = document.getElementById('bk-form');
     const upd = () => {
       const ci=f.checkIn.value, co=f.checkOut.value;
-      if (ci&&co) { const n=daysBetween(ci,co); f.querySelector('#ni span:first-child').textContent=`${n}박 × 원가`; f.querySelector('#ct').textContent=fmt(n*p.cost); }
+      if (ci&&co) {
+        const n=daysBetween(ci,co);
+        f.querySelector('#ni span:first-child').textContent=`${n}박 × 원가`;
+        f.querySelector('#ct').textContent=fmt(n*p.cost);
+        f.querySelector('#suggest-info span:first-child').textContent=`기본가 × ${n}박 (참고)`;
+        f.querySelector('#suggest-price').textContent=fmt(n*p.price);
+      }
     };
     f.checkIn.onchange = f.checkOut.onchange = upd; upd();
     f.onsubmit = async e => {
@@ -242,16 +255,16 @@ class Router {
       const d = Object.fromEntries(new FormData(e.target));
       if (d.checkIn >= d.checkOut) { toast('체크아웃은 체크인 이후','error'); return; }
       const conflict = store.bookings.find(bk => bk.propId===propId && bk.id!==booking?.id && !(d.checkOut<=bk.checkIn || d.checkIn>=bk.checkOut));
-      if (conflict) { toast(`예약 충돌: ${conflict.guest}`,'error'); return; }
+      if (conflict) { toast(`예약 충돌: ${conflict.guest} (${conflict.checkIn}~${conflict.checkOut})`,'error'); return; }
       d.propId = propId;
       showLoading(true);
       try {
         if (isEdit) await store.updateBooking(booking.id, d);
         else await store.addBooking(d);
-        toast(isEdit?'수정':'등록','success');
+        toast(isEdit?'수정완료':'등록완료','success');
         closeModal();
         if (document.querySelector('[data-admin]')) await this.renderAdminTab();
-      } catch(err) { toast('실패','error'); } finally { showLoading(false); }
+      } catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
     };
     lucide.createIcons();
   }
@@ -430,25 +443,116 @@ class Router {
     catch(e) { toast('실패','error'); } finally { showLoading(false); }
   }
 
-  admSales(c) {
-    const byProp = store.properties.map(p=>({p,t:store.bookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+(+b.price||0),0),n:store.bookings.filter(b=>b.propId===p.id).length}));
+   admSales(c) {
+    // 필터 상태 저장
+    const f = this._salesFilter || { mode: 'all', period: 'month', from: new Date(Date.now()-30*86400000).toISOString().split('T')[0], to: todayStr(), groupSel: '', propIds: [] };
+    
+    // 필터링 로직
+    let filteredBookings = store.bookings.filter(b => {
+      // 기간 필터
+      if (b.checkIn < f.from || b.checkIn > f.to) return false;
+      // 모드 필터
+      if (f.mode === 'group' && f.groupSel) {
+        const p = store.prop(b.propId);
+        if (!p || p.group !== f.groupSel) return false;
+      }
+      if (f.mode === 'selected' && f.propIds.length) {
+        if (!f.propIds.includes(b.propId)) return false;
+      }
+      return true;
+    });
+    
+    const byProp = store.properties.map(p=>({p, t:filteredBookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+(+b.price||0),0), n:filteredBookings.filter(b=>b.propId===p.id).length}));
     const byGroup = {};
-    store.groups.forEach(g=>byGroup[g]=store.properties.filter(p=>p.group===g).reduce((s,p)=>s+store.bookings.filter(b=>b.propId===p.id).reduce((ss,b)=>ss+b.price,0),0));
-    const total = store.bookings.reduce((s,b)=>s+(+b.price||0),0);
+    store.groups.forEach(g=>byGroup[g] = store.properties.filter(p=>p.group===g).reduce((s,p)=>s+filteredBookings.filter(b=>b.propId===p.id).reduce((ss,b)=>ss+b.price,0),0));
+    const total = filteredBookings.reduce((s,b)=>s+(+b.price||0),0);
+    
     c.innerHTML = `<h2 class="text-3xl font-black mb-6">💰 매출 관리</h2>
+      <div class="bg-white p-4 rounded-2xl border mb-6">
+        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">📊 매출 필터</p>
+        <div class="flex gap-2 flex-wrap items-center">
+          <select id="sFilterMode" class="p-3 border rounded-xl font-bold text-sm">
+            <option value="all" ${f.mode==='all'?'selected':''}>전체</option>
+            <option value="group" ${f.mode==='group'?'selected':''}>그룹별</option>
+            <option value="selected" ${f.mode==='selected'?'selected':''}>선택매물</option>
+          </select>
+          <select id="sFilterGroup" class="p-3 border rounded-xl font-bold text-sm ${f.mode==='group'?'':'hidden'}">
+            <option value="">그룹 선택</option>
+            ${store.groups.map(g=>`<option value="${g}" ${f.groupSel===g?'selected':''}>${g}</option>`).join('')}
+          </select>
+          <select id="sPeriod" class="p-3 border rounded-xl font-bold text-sm">
+            <option value="day" ${f.period==='day'?'selected':''}>일</option>
+            <option value="week" ${f.period==='week'?'selected':''}>주</option>
+            <option value="month" ${f.period==='month'?'selected':''}>월</option>
+            <option value="year" ${f.period==='year'?'selected':''}>년</option>
+            <option value="custom" ${f.period==='custom'?'selected':''}>사용자 지정</option>
+          </select>
+          <input type="date" id="sFrom" value="${f.from}" class="p-3 border rounded-xl font-bold text-sm">
+          <span class="text-slate-400 font-black">~</span>
+          <input type="date" id="sTo" value="${f.to}" class="p-3 border rounded-xl font-bold text-sm">
+          <button onclick="router.applySalesFilter()" class="bg-slate-900 text-white px-5 py-3 rounded-xl font-black text-sm">적용</button>
+          <button onclick="router.resetSalesFilter()" class="bg-slate-100 text-slate-600 px-4 py-3 rounded-xl font-black text-sm">초기화</button>
+        </div>
+        ${f.mode==='selected'?`<div class="mt-3 p-3 bg-blue-50 rounded-xl"><p class="text-[10px] font-black text-blue-600 uppercase mb-2">매물 선택 (체크박스)</p><div class="grid grid-cols-2 md:grid-cols-4 gap-2">${store.properties.map(p=>`<label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer"><input type="checkbox" class="prop-sel" value="${p.id}" ${f.propIds.includes(p.id)?'checked':''}><span class="text-xs font-bold">${p.name}</span></label>`).join('')}</div></div>`:''}
+      </div>
+      
       <div class="grid grid-cols-4 gap-4 mb-6">
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-5 rounded-2xl"><p class="text-[10px] font-black uppercase opacity-70">총매출</p><p class="text-2xl font-black mt-2">${fmt(total)}</p></div>
-        ${Object.entries(byGroup).map(([g,v])=>`<div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${g}</p><p class="text-xl font-black text-blue-600 mt-2">${fmt(v)}</p></div>`).join('')}
+        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-5 rounded-2xl"><p class="text-[10px] font-black uppercase opacity-70">총매출 (${filteredBookings.length}건)</p><p class="text-2xl font-black mt-2">${fmt(total)}</p></div>
+        ${Object.entries(byGroup).slice(0,3).map(([g,v])=>`<div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${g}</p><p class="text-xl font-black text-blue-600 mt-2">${fmt(v)}</p></div>`).join('')}
       </div>
-      <div class="bg-white rounded-2xl border overflow-hidden mb-6"><div class="p-5 border-b bg-slate-50"><h3 class="font-black text-sm uppercase tracking-widest">숙소별 매출 순위</h3></div>
-        <table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-5 py-3 text-left">숙소</th><th class="px-5 py-3 text-right">예약수</th><th class="px-5 py-3 text-right">총매출</th><th class="px-5 py-3 text-right">평균단가</th></tr></thead><tbody class="text-sm divide-y">${byProp.sort((a,b)=>b.t-a.t).map(r=>`<tr class="hover:bg-blue-50/30"><td class="px-5 py-4 font-black">${r.p.name}</td><td class="px-5 py-4 text-right font-bold">${r.n}건</td><td class="px-5 py-4 text-right font-black text-blue-600">${fmt(r.t)}</td><td class="px-5 py-4 text-right font-bold text-slate-500">${fmt(r.n?Math.round(r.t/r.n):0)}</td></tr>`).join('')}</tbody></table>
+      
+      <div class="bg-white rounded-2xl border overflow-hidden mb-6">
+        <div class="p-5 border-b bg-slate-50"><h3 class="font-black text-sm uppercase tracking-widest">숙소별 매출 순위</h3></div>
+        <table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-5 py-3 text-left">숙소</th><th class="px-5 py-3 text-left">그룹</th><th class="px-5 py-3 text-right">예약수</th><th class="px-5 py-3 text-right">총매출</th><th class="px-5 py-3 text-right">평균단가</th></tr></thead>
+        <tbody class="text-sm divide-y">${byProp.sort((a,b)=>b.t-a.t).map(r=>`<tr class="hover:bg-blue-50/30"><td class="px-5 py-4 font-black">${r.p.name}</td><td class="px-5 py-4 text-xs"><span class="px-2 py-0.5 bg-slate-100 rounded font-black">${r.p.group||'-'}</span></td><td class="px-5 py-4 text-right font-bold">${r.n}건</td><td class="px-5 py-4 text-right font-black text-blue-600">${fmt(r.t)}</td><td class="px-5 py-4 text-right font-bold text-slate-500">${fmt(r.n?Math.round(r.t/r.n):0)}</td></tr>`).join('')}</tbody></table>
       </div>
-      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">기간별 매출 차트</h3><canvas id="sChart" height="100"></canvas></div>`;
+      
+      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📈 기간별 매출 차트 (${f.period === 'day' ? '일별' : f.period === 'week' ? '주별' : f.period === 'year' ? '연별' : '월별'})</h3><canvas id="sChart" height="100"></canvas></div>`;
+    
     setTimeout(()=>{
-      const months={};store.bookings.forEach(b=>{const m=b.checkIn.slice(0,7);months[m]=(months[m]||0)+b.price});
-      const k=Object.keys(months).sort();
-      new Chart(document.getElementById('sChart'),{type:'line',data:{labels:k,datasets:[{label:'매출',data:k.map(x=>months[x]),borderColor:'#2563eb',backgroundColor:'#2563eb30',fill:true,tension:0.4}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+      const buckets = {};
+      filteredBookings.forEach(b => {
+        let key;
+        if (f.period === 'day') key = b.checkIn;
+        else if (f.period === 'year') key = b.checkIn.slice(0,4);
+        else if (f.period === 'week') {
+          const d = new Date(b.checkIn);
+          const wn = Math.ceil((d.getDate() + new Date(d.getFullYear(),d.getMonth(),1).getDay())/7);
+          key = `${b.checkIn.slice(0,7)}-W${wn}`;
+        }
+        else key = b.checkIn.slice(0,7);
+        buckets[key] = (buckets[key]||0) + b.price;
+      });
+      const k = Object.keys(buckets).sort();
+      new Chart(document.getElementById('sChart'),{type:'line',data:{labels:k,datasets:[{label:'매출',data:k.map(x=>buckets[x]),borderColor:'#2563eb',backgroundColor:'#2563eb30',fill:true,tension:0.4}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
     },100);
+    
+    // 모드 변경 시 그룹 select 표시/숨김
+    setTimeout(()=>{
+      const modeSel = document.getElementById('sFilterMode');
+      if(modeSel) modeSel.onchange = () => {
+        this._salesFilter = { ...f, mode: modeSel.value };
+        this.renderAdminTab();
+      };
+    },50);
+  }
+
+  applySalesFilter() {
+    const mode = document.getElementById('sFilterMode')?.value || 'all';
+    const period = document.getElementById('sPeriod')?.value || 'month';
+    const from = document.getElementById('sFrom')?.value;
+    const to = document.getElementById('sTo')?.value;
+    const groupSel = document.getElementById('sFilterGroup')?.value || '';
+    const propIds = [...document.querySelectorAll('.prop-sel:checked')].map(x=>+x.value);
+    this._salesFilter = { mode, period, from, to, groupSel, propIds };
+    this.renderAdminTab();
+    toast('필터 적용됨', 'success');
+  }
+
+  resetSalesFilter() {
+    this._salesFilter = null;
+    this.renderAdminTab();
+    toast('필터 초기화', 'info');
   }
 
   admExpenses(c) {
@@ -578,18 +682,68 @@ class Router {
   async addRecipient(uid){if(uid&&!store.reportRecipients.includes(uid)){store.reportRecipients.push(uid);await API.setAll('reportRecipients',store.reportRecipients);await this.renderAdminTab()}}
   async delRecipient(uid){store.reportRecipients=store.reportRecipients.filter(x=>x!==uid);await API.setAll('reportRecipients',store.reportRecipients);await this.renderAdminTab()}
 
-  genReport() {
+   genReport() {
     const rev = store.bookings.reduce((s,b)=>s+b.price,0);
     const cost = store.expenses.reduce((s,e)=>s+e.amount,0);
     const top = [...store.properties].sort((a,b)=>store.bookings.filter(x=>x.propId===b.id).reduce((s,x)=>s+x.price,0)-store.bookings.filter(x=>x.propId===a.id).reduce((s,x)=>s+x.price,0))[0];
     const critical = store.logs.filter(l=>l.special).slice(0,5);
+    const recentChats = [...store.chats].slice(-5).reverse();
+    
     openModal('📝 AI 자동 생성 보고서', `
       <div class="space-y-5">
-        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-xs font-black uppercase opacity-70 mb-2">이번 주 핵심 요약</p><p class="font-bold leading-relaxed">총 매출 <b>${fmt(rev)}</b>, 총 지출 <b>${fmt(cost)}</b>으로 <b>${fmt(rev-cost)}</b>의 순이익. 최고 매출 숙소는 <b>${top?.name||'-'}</b>이며, ${critical.length}건의 특이사항이 발생했습니다.</p></div>
-        <div><h4 class="font-black mb-3">📈 매출 현황</h4><div class="bg-slate-50 p-4 rounded-xl"><p class="text-sm">총 ${store.bookings.length}건 예약 / 평균 ${fmt(store.bookings.length?Math.round(rev/store.bookings.length):0)}</p></div></div>
-        <div><h4 class="font-black mb-3">💳 주요 지출</h4><div class="bg-slate-50 p-4 rounded-xl space-y-2">${Object.entries(store.expenses.reduce((a,e)=>{a[e.category]=(a[e.category]||0)+e.amount;return a},{})).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`<div class="flex justify-between text-sm"><span class="font-bold">${k}</span><span class="font-black text-red-500">${fmt(v)}</span></div>`).join('')}</div></div>
-        <div><h4 class="font-black mb-3">🚨 특이사항</h4><div class="bg-red-50 p-4 rounded-xl space-y-2">${critical.length?critical.map(l=>`<p class="text-sm font-bold text-red-700">• ${l.message}</p>`).join(''):'<p class="text-sm text-slate-500">없음</p>'}</div></div>
-        <div class="flex gap-2 pt-4 border-t"><button onclick="window.print()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black">📄 인쇄/PDF</button><button onclick="toast('수신자 '+store.reportRecipients.length+'명 발송','success')" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black">📧 발송</button></div>
+        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl">
+          <p class="text-xs font-black uppercase opacity-70 mb-2">이번 주 핵심 요약</p>
+          <p class="font-bold leading-relaxed">총 매출 <b>${fmt(rev)}</b>, 총 지출 <b>${fmt(cost)}</b>으로 <b>${fmt(rev-cost)}</b>의 순이익을 달성했습니다. 최고 매출 숙소는 <b>${top?.name||'-'}</b>이며, ${critical.length}건의 특이사항이 발생했습니다.</p>
+        </div>
+        
+        <div>
+          <h4 class="font-black mb-3">📈 매출 현황</h4>
+          <div class="bg-slate-50 p-4 rounded-xl">
+            <p class="text-sm">총 ${store.bookings.length}건 예약 / 평균 단가 ${fmt(store.bookings.length?Math.round(rev/store.bookings.length):0)}</p>
+          </div>
+        </div>
+        
+        <div>
+          <h4 class="font-black mb-3">💳 주요 지출 (TOP 3)</h4>
+          <div class="bg-slate-50 p-4 rounded-xl space-y-2">
+            ${Object.entries(store.expenses.reduce((a,e)=>{a[e.category]=(a[e.category]||0)+e.amount;return a},{})).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`<div class="flex justify-between text-sm"><span class="font-bold">${k}</span><span class="font-black text-red-500">${fmt(v)}</span></div>`).join('')}
+          </div>
+        </div>
+        
+        <div>
+          <h4 class="font-black mb-3">🚨 특이사항</h4>
+          <div class="bg-red-50 p-4 rounded-xl space-y-2">
+            ${critical.length?critical.map(l=>`<p class="text-sm font-bold text-red-700">• ${l.message}</p>`).join(''):'<p class="text-sm text-slate-500">특이사항 없음</p>'}
+          </div>
+        </div>
+        
+        <div>
+          <h4 class="font-black mb-3">💬 주요 대화 내역 (최근 5건)</h4>
+          <div class="bg-slate-50 p-4 rounded-xl space-y-3 max-h-60 overflow-y-auto scrollbar">
+            ${recentChats.length?recentChats.map(c=>{
+              const p = store.prop(c.propId);
+              return `<div class="bg-white p-3 rounded-lg">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-[10px] font-black text-blue-600 uppercase">${p?.name||'-'}</span>
+                  <span class="text-[10px] text-slate-400 font-bold">${c.time}</span>
+                </div>
+                <p class="text-xs"><b class="text-slate-700">${c.sender}:</b> <span class="text-slate-600">${c.message}</span></p>
+              </div>`;
+            }).join(''):'<p class="text-sm text-slate-500">대화 내역 없음</p>'}
+          </div>
+        </div>
+        
+        <div>
+          <h4 class="font-black mb-3">🏠 숙소별 매출 순위 (TOP 3)</h4>
+          <div class="bg-slate-50 p-4 rounded-xl space-y-2">
+            ${[...store.properties].map(p=>({p,v:store.bookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+b.price,0)})).sort((a,b)=>b.v-a.v).slice(0,3).map((r,i)=>`<div class="flex justify-between text-sm"><span class="font-bold">${i+1}. ${r.p.name}</span><span class="font-black text-blue-600">${fmt(r.v)}</span></div>`).join('')}
+          </div>
+        </div>
+        
+        <div class="flex gap-2 pt-4 border-t">
+          <button onclick="window.print()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black">📄 인쇄/PDF</button>
+          <button onclick="toast('수신자 '+store.reportRecipients.length+'명에게 발송됨','success')" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black">📧 수신자 발송</button>
+        </div>
       </div>`, 'max-w-3xl');
   }
 
