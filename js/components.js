@@ -5,28 +5,28 @@ window.UI = {
     const pending = isAdmin ? store.pendingProfileRequests().length : 0;
     const unread = store.getMyUnreadCount();
     const cfg = store.siteConfig || {};
-    const item = (k,icon,label,onclick,b) => `<a onclick="${onclick};router.closeMobileMenu()" class="flex items-center gap-3 px-5 py-3.5 rounded-2xl cursor-pointer transition ${active===k?'bg-blue-600 text-white font-bold shadow-xl':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${icon}" class="w-5 h-5"></i><span class="text-sm flex-1">${label}</span>${b?`<span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full notif-badge">${b}</span>`:''}</a>`;
+    const item = (k,icon,label,onclick,b) => `<a onclick="${onclick};router.closeMobileMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition ${active===k?'bg-blue-600 text-white font-bold shadow-xl':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${icon}" class="w-5 h-5 flex-shrink-0"></i><span class="text-sm flex-1 text-left">${label}</span>${b?`<span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full notif-badge flex-shrink-0">${b}</span>`:''}</a>`;
     return `<aside id="sidebar" class="hidden lg:flex mobile-sidebar w-72 flex-col bg-slate-900 text-white p-6 sticky top-0 h-screen">
-      <div class="mb-8 px-2 cursor-pointer" onclick="router.go('home')">
-        <h1 class="text-2xl font-black tracking-tighter flex items-center gap-2"><span class="text-3xl">${cfg.logoEmoji||'🏢'}</span>${cfg.logoText||'QJ.PMS'}</h1>
-        <p class="text-[9px] text-slate-500 font-bold uppercase mt-1">${cfg.title||'QJ-PropMS'} v3.1</p>
+      <div class="mb-6 px-2 cursor-pointer" onclick="router.go('home');router.closeMobileMenu()">
+        <h1 class="text-2xl font-black tracking-tighter flex items-center gap-2"><span class="text-3xl">${cfg.logoEmoji||'🏢'}</span><span>${cfg.logoText||'QJ.PMS'}</span></h1>
+        <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">${cfg.title||'QJ-PropMS'} v3.1</p>
       </div>
       <nav class="space-y-1 flex-1 overflow-y-auto scrollbar">
         ${item('home','layout-grid','내 숙소 목록',"router.go('home')")}
         ${item('mySchedule','calendar','내 스케줄',"router.go('mySchedule')")}
-        <a onclick="router.showNotifications()" class="flex items-center gap-3 px-5 py-3.5 rounded-2xl cursor-pointer text-slate-400 hover:bg-white/5 font-semibold"><i data-lucide="bell" class="w-5 h-5"></i><span class="text-sm flex-1">내 알람 보기</span>${unread?`<span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full notif-badge">${unread}</span>`:''}</a>
-        <a onclick="router.openSearch()" class="flex items-center gap-3 px-5 py-3.5 rounded-2xl cursor-pointer text-slate-400 hover:bg-white/5 font-semibold"><i data-lucide="search" class="w-5 h-5"></i><span class="text-sm flex-1">통합 검색</span><kbd class="px-1.5 py-0.5 bg-white/10 rounded text-[9px] font-mono">⌘K</kbd></a>
+        <a onclick="router.showNotifications();router.closeMobileMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer text-slate-400 hover:bg-white/5 font-semibold"><i data-lucide="bell" class="w-5 h-5 flex-shrink-0"></i><span class="text-sm flex-1 text-left">내 알람 보기</span>${unread?`<span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full notif-badge flex-shrink-0">${unread}</span>`:''}</a>
+        <a onclick="router.openSearch();router.closeMobileMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer text-slate-400 hover:bg-white/5 font-semibold"><i data-lucide="search" class="w-5 h-5 flex-shrink-0"></i><span class="text-sm flex-1 text-left">통합 검색</span><kbd class="px-1.5 py-0.5 bg-white/10 rounded text-[9px] font-mono flex-shrink-0">⌘K</kbd></a>
         ${isAdmin?item('admin','shield-check','관리자 오피스',"router.go('admin')",pending):''}
       </nav>
-      <div class="mt-4 pt-4 border-t border-white/10 space-y-2">
+      <div class="mt-3 pt-3 border-t border-white/10 space-y-1">
         <button onclick="router.toggleDarkMode()" class="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 rounded-xl text-left text-slate-400">
-          <i data-lucide="${document.documentElement.classList.contains('dark')?'sun':'moon'}" class="w-4 h-4"></i>
-          <span class="text-xs flex-1 font-bold">${document.documentElement.classList.contains('dark')?'라이트 모드':'다크 모드'}</span>
+          <i data-lucide="${document.documentElement.classList.contains('dark')?'sun':'moon'}" class="w-4 h-4 flex-shrink-0"></i>
+          <span class="text-xs flex-1 font-bold text-left">${document.documentElement.classList.contains('dark')?'라이트 모드':'다크 모드'}</span>
         </button>
-        <button onclick="router.showMyProfile()" class="w-full flex items-center gap-3 px-3 py-3 hover:bg-white/5 rounded-xl text-left">
-          <div class="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white" style="background:${u.tagColor||'#2563eb'}">${u.name.charAt(0)}</div>
-          <div class="flex-1 min-w-0"><p class="text-sm font-black truncate">${u.name}</p><p class="text-[9px] text-blue-400 font-bold uppercase">${u.role} · 정보수정</p></div>
-          <i data-lucide="settings" class="w-4 h-4 text-slate-500"></i>
+        <button onclick="router.showMyProfile();router.closeMobileMenu()" class="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 rounded-xl text-left">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center font-black text-white flex-shrink-0" style="background:${u.tagColor||'#2563eb'}">${u.name.charAt(0)}</div>
+          <div class="flex-1 min-w-0 text-left"><p class="text-xs font-black truncate">${u.name}</p><p class="text-[9px] text-blue-400 font-bold uppercase">${u.role}</p></div>
+          <i data-lucide="settings" class="w-4 h-4 text-slate-500 flex-shrink-0"></i>
         </button>
       </div>
     </aside>
@@ -37,14 +37,14 @@ window.UI = {
     const u = store.currentUser;
     const unread = store.getMyUnreadCount();
     return `<header class="h-16 sticky top-0 z-40 px-8 flex items-center justify-between border-b bg-white/90 backdrop-blur-xl">
-      <div class="flex items-center gap-3">
-        <button class="mobile-menu-btn hidden p-2 hover:bg-slate-100 rounded-lg" onclick="router.toggleMobileMenu()"><i data-lucide="menu" class="w-5 h-5"></i></button>
-        <div>
-          <h1 class="text-base font-black tracking-tight">${title}</h1>
-          <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'})}</span>
+      <div class="flex items-center gap-3 min-w-0 flex-1">
+        <button class="mobile-menu-btn hidden p-2 hover:bg-slate-100 rounded-lg flex-shrink-0" onclick="router.toggleMobileMenu()"><i data-lucide="menu" class="w-5 h-5"></i></button>
+        <div class="min-w-0">
+          <h1 class="text-base font-black tracking-tight truncate">${title}</h1>
+          <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">${new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'})}</span>
         </div>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 flex-shrink-0">
         <button onclick="router.openSearch()" class="hidden md:flex items-center gap-2 px-3 h-10 bg-slate-50 hover:bg-blue-50 rounded-xl text-xs font-bold text-slate-500"><i data-lucide="search" class="w-4 h-4"></i>검색<kbd class="px-1.5 py-0.5 bg-white rounded text-[9px] font-mono ml-2">⌘K</kbd></button>
         <button onclick="router.showNotifications()" class="relative w-10 h-10 bg-slate-50 hover:bg-blue-50 rounded-xl flex items-center justify-center"><i data-lucide="bell" class="w-5 h-5 text-slate-500"></i>${unread?`<span class="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center ring-pulse">${unread}</span>`:''}</button>
         <button onclick="router.showMyProfile()" class="text-right hidden sm:block hover:bg-slate-50 px-3 py-1.5 rounded-xl"><p class="text-xs font-black flex items-center gap-1">${u.name}<i data-lucide="settings" class="w-3 h-3 text-slate-400"></i></p><p class="text-[9px] text-blue-600 font-bold uppercase">${u.role}</p></button>
@@ -68,17 +68,14 @@ window.UI = {
     </div>`;
   },
 
-  // ===== [신규] 빈 상태 컴포넌트 =====
   Empty(icon, title, desc, btnLabel, btnAction) {
-    return `<div class="empty-state"><i data-lucide="${icon}"></i><h4>${title}</h4><p>${desc}</p>${btnLabel?`<button onclick="${btnAction}" class="mt-4 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-black text-sm">${btnLabel}</button>`:''}</div>`;
+    return `<div class="empty-state"><i data-lucide="${icon}"></i><h4>${title}</h4><p>${desc||''}</p>${btnLabel?`<button onclick="${btnAction}" class="mt-4 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-black text-sm">${btnLabel}</button>`:''}</div>`;
   },
 
-  // ===== [신규] 스켈레톤 로더 =====
   Skeleton(count=3) {
     return Array(count).fill(0).map(()=>`<div class="bg-white p-5 rounded-2xl border space-y-3"><div class="skeleton h-6 w-2/3"></div><div class="skeleton h-4 w-full"></div><div class="skeleton h-4 w-1/2"></div></div>`).join('');
   },
 
-  // ===== [신규] 위젯 카드 (전월 대비) =====
   StatWidget(label, value, change, icon='trending-up') {
     const isUp = change >= 0;
     const col = isUp ? 'text-green-500' : 'text-red-500';

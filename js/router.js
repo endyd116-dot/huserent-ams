@@ -609,10 +609,46 @@ class Router {
     const specials = store.logs.filter(l=>l.special).slice(0,5);
     const insights = store.getAIInsights().slice(0,3);
     
-    c.innerHTML = `<h2 class="text-3xl font-black mb-2">📊 ${now.getMonth()+1}월 운영 현황</h2><p class="text-slate-500 mb-8">전월 대비 성과 분석</p>
-    <div class="grid grid-cols-4 gap-4 mb-8 mobile-stack">${UI.StatWidget('이번달 매출', fmt(thisRev), revChange, 'trending-up')}${UI.StatWidget('이번달 지출', fmt(thisCost), costChange, 'trending-down')}${UI.StatWidget('순이익', fmt(thisProfit), profitChange, 'dollar-sign')}${UI.StatWidget('예약 건수', thisBks+'건', bkChange, 'calendar')}</div>
+    c.innerHTML = `<h2 class="text-3xl font-black mb-2">📊 ${now.getMonth()+1}월 운영 현황</h2><p class="text-slate-500 mb-6">전월 대비 성과 분석</p>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div class="bg-white p-4 lg:p-6 rounded-2xl border">
+        <div class="flex items-start justify-between mb-2">
+          <p class="text-[10px] font-black text-slate-400 uppercase">매출</p>
+          <i data-lucide="trending-up" class="w-4 h-4 text-slate-300"></i>
+        </div>
+        <p class="text-lg lg:text-2xl font-black truncate">${fmt(thisRev)}</p>
+        ${revChange!==undefined?`<p class="text-xs font-bold mt-1 ${revChange>=0?'text-green-500':'text-red-500'}">${revChange>=0?'▲':'▼'} ${Math.abs(revChange).toFixed(1)}%</p>`:''}
+      </div>
+      <div class="bg-white p-4 lg:p-6 rounded-2xl border">
+        <div class="flex items-start justify-between mb-2">
+          <p class="text-[10px] font-black text-slate-400 uppercase">지출</p>
+          <i data-lucide="trending-down" class="w-4 h-4 text-slate-300"></i>
+        </div>
+        <p class="text-lg lg:text-2xl font-black truncate">${fmt(thisCost)}</p>
+        ${costChange!==undefined?`<p class="text-xs font-bold mt-1 ${costChange<=0?'text-green-500':'text-red-500'}">${costChange>=0?'▲':'▼'} ${Math.abs(costChange).toFixed(1)}%</p>`:''}
+      </div>
+      <div class="bg-white p-4 lg:p-6 rounded-2xl border">
+        <div class="flex items-start justify-between mb-2">
+          <p class="text-[10px] font-black text-slate-400 uppercase">순이익</p>
+          <i data-lucide="dollar-sign" class="w-4 h-4 text-slate-300"></i>
+        </div>
+        <p class="text-lg lg:text-2xl font-black truncate ${thisProfit>=0?'text-green-600':'text-red-500'}">${fmt(thisProfit)}</p>
+        ${profitChange!==undefined?`<p class="text-xs font-bold mt-1 ${profitChange>=0?'text-green-500':'text-red-500'}">${profitChange>=0?'▲':'▼'} ${Math.abs(profitChange).toFixed(1)}%</p>`:''}
+      </div>
+      <div class="bg-white p-4 lg:p-6 rounded-2xl border">
+        <div class="flex items-start justify-between mb-2">
+          <p class="text-[10px] font-black text-slate-400 uppercase">예약</p>
+          <i data-lucide="calendar" class="w-4 h-4 text-slate-300"></i>
+        </div>
+        <p class="text-lg lg:text-2xl font-black">${thisBks}건</p>
+        ${bkChange!==undefined?`<p class="text-xs font-bold mt-1 ${bkChange>=0?'text-green-500':'text-red-500'}">${bkChange>=0?'▲':'▼'} ${Math.abs(bkChange).toFixed(1)}%</p>`:''}
+      </div>
+    </div>
     ${insights.length?`<div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-5 rounded-2xl mb-6 cursor-pointer" onclick="router.adminTab='aiInsights';router.renderAdminNav();router.renderAdminTab()"><div class="flex items-center justify-between mb-3"><h3 class="font-black flex items-center gap-2"><i data-lucide="sparkles" class="w-5 h-5"></i>AI 인사이트 (${insights.length}건)</h3><span class="text-xs opacity-80">전체보기 →</span></div><div class="space-y-2">${insights.map(i=>`<div class="bg-white/10 rounded-xl p-3"><p class="text-sm font-black">${i.title}</p><p class="text-[10px] opacity-80 mt-1">${i.desc}</p></div>`).join('')}</div></div>`:''}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mobile-stack"><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">🚨 특이사항 (최근 5건)</h3>${specials.length?specials.map(s=>`<div class="p-3 bg-red-50 rounded-xl mb-2 border border-red-100"><p class="text-sm font-bold text-red-700">${s.message}</p><p class="text-[10px] text-slate-400 font-bold mt-1">${s.time}</p></div>`).join(''):UI.Empty('check-circle','특이사항 없음','정상 운영 중')}</div><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📈 숙소별 매출 (이번달)</h3>${store.properties.length?'<canvas id="mc" height="200"></canvas>':UI.Empty('home','매물 등록 필요')}</div></div>`;
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">🚨 특이사항 (최근 5건)</h3>${specials.length?specials.map(s=>`<div class="p-3 bg-red-50 rounded-xl mb-2 border border-red-100"><p class="text-sm font-bold text-red-700">${s.message}</p><p class="text-[10px] text-slate-400 font-bold mt-1">${s.time}</p></div>`).join(''):UI.Empty('check-circle','특이사항 없음','정상 운영 중')}</div>
+      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📈 숙소별 매출 (이번달)</h3>${store.properties.length?'<canvas id="mc" height="200"></canvas>':UI.Empty('home','매물 등록 필요')}</div>
+    </div>`;
     setTimeout(()=>{
       if (!store.properties.length) return;
       const data = store.properties.map(p=>({n:p.name.slice(0,8),v:store.bookings.filter(b=>b.propId===p.id&&(b.checkIn||'').startsWith(thisMonth)).reduce((s,b)=>s+(+b.price||0),0)}));
@@ -620,7 +656,6 @@ class Router {
       if(el) new Chart(el,{type:'bar',data:{labels:data.map(d=>d.n),datasets:[{data:data.map(d=>d.v),backgroundColor:'#2563eb'}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
     },100);
   }
-
   // ===== 매물 관리 =====
   admProps(c) {
     if (!store.properties.length) {
