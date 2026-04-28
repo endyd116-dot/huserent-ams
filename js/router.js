@@ -981,31 +981,58 @@ class Router {
   admStats(c) {
     const rev = store.bookings.reduce((s,b)=>s+(+b.price||0),0);
     const costAll = store.expenses.reduce((s,e)=>s+(+e.amount||0),0);
-    const costNoFixed = store.expenses.filter(e=>e.majorCat!=='고정지출').reduce((s,e)=>s+(+e.amount||0),0);
-    const cost = costNoFixed; // 고정비 제외 기본값
-    c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">📊 통계 & 보고서</h2><button onclick="router.genReport()" class="bg-amber-500 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg">📝 AI 보고서 생성</button></div>
-            <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 mb-4 flex items-center justify-between">
-        <p class="text-sm font-black text-amber-700">💡 통계 기준: <b>고정지출 제외</b> (월세/관리비 등 매월 고정비용은 통계에서 제외됨)</p>
-        <button onclick="router._statsShowAll=!router._statsShowAll;router.renderAdminTab()" class="bg-amber-500 text-white px-4 py-2 rounded-lg font-black text-xs">${this._statsShowAll?'고정지출 포함 보기':'고정지출 포함 보기'}</button>
+    const costInit = store.expenses.filter(e=>e.majorCat==='초기투자지출').reduce((s,e)=>s+(+e.amount||0),0);
+    const costNoInit = costAll - costInit; // 초기투자지출 제외
+    const showAll = this._statsShowAll || false;
+    const cost = showAll ? costAll : costNoInit;
+    
+    c.innerHTML = `<div class="flex justify-between items-center mb-6">
+      <h2 class="text-3xl font-black">📊 통계 & 보고서</h2>
+      <button onclick="router.genReport()" class="bg-amber-500 text-white px-5 py-3 rounded-xl font-black text-sm shadow-lg">📝 AI 보고서 생성</button>
+    </div>
+    
+    <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 mb-4 flex items-center justify-between">
+      <div>
+        <p class="text-sm font-black text-amber-700">💡 통계 기준: <b>${showAll?'초기투자지출 포함':'초기투자지출 제외'}</b></p>
+        <p class="text-xs text-amber-600 font-bold mt-1">리모델링·가구구입 등 일회성 비용은 운영 통계에서 ${showAll?'포함되어':'제외되어'} 있습니다</p>
       </div>
-      <div class="grid grid-cols-4 gap-4 mb-6">
-        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총매출</p><p class="text-2xl font-black text-blue-600 mt-2">${fmt(rev)}</p></div>
-        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${this._statsShowAll?'총지출 (전체)':'총지출 (고정비 제외)'}</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(this._statsShowAll?costAll:costNoFixed)}</p></div>
-        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">고정지출</p><p class="text-2xl font-black text-amber-600 mt-2">${fmt(costAll-costNoFixed)}</p></div>
-        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">순이익</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-(this._statsShowAll?costAll:costNoFixed))}</p></div>
-      </div>
-      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총매출</p><p class="text-2xl font-black text-blue-600 mt-2">${fmt(rev)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총지출</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(cost)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">순이익</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-cost)}</p></div></div>
-      <div class="grid grid-cols-2 gap-4 mb-6"><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">숙소별 손익</h3><canvas id="c1" height="200"></canvas></div><div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">지출 카테고리 분포</h3><canvas id="c2" height="200"></canvas></div></div>
-      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">📧 정기 보고서 수신자</h3>
-        <div class="flex flex-wrap gap-2 mb-3">${store.reportRecipients.map(r=>`<span class="inline-flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg text-xs font-bold">${store.user(r)?.name||r}<button onclick="router.delRecipient('${r}')" class="text-red-400">×</button></span>`).join('')}</div>
-        <select onchange="router.addRecipient(this.value)" class="p-3 border rounded-xl font-bold"><option value="">+ 수신자 추가</option>${store.users.filter(u=>!store.reportRecipients.includes(u.id)).map(u=>`<option value="${u.id}">${u.name}</option>`).join('')}</select>
-      </div>`;
+      <button onclick="router._statsShowAll=!router._statsShowAll;router.renderAdminTab()" class="bg-amber-500 text-white px-4 py-2 rounded-lg font-black text-xs">${showAll?'🔻 초기투자 제외하기':'🔺 초기투자 포함 보기'}</button>
+    </div>
+    
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">총매출</p><p class="text-2xl font-black text-blue-600 mt-2">${fmt(rev)}</p></div>
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${showAll?'총지출 (전체)':'운영 지출 (초기투자 제외)'}</p><p class="text-2xl font-black text-red-500 mt-2">${fmt(cost)}</p></div>
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">초기투자지출</p><p class="text-2xl font-black text-amber-600 mt-2">${fmt(costInit)}</p><p class="text-[9px] text-slate-400 mt-1">${showAll?'포함됨':'제외됨'}</p></div>
+      <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${showAll?'순이익 (전체)':'운영 순이익'}</p><p class="text-2xl font-black text-green-600 mt-2">${fmt(rev-cost)}</p></div>
+    </div>
+    
+    <div class="grid grid-cols-2 gap-4 mb-6">
+      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">숙소별 손익</h3><canvas id="c1" height="200"></canvas></div>
+      <div class="bg-white p-6 rounded-2xl border"><h3 class="font-black mb-4">지출 카테고리 분포</h3><canvas id="c2" height="200"></canvas></div>
+    </div>
+    
+    <div class="bg-white p-6 rounded-2xl border">
+      <div class="flex justify-between items-center mb-4"><h3 class="font-black">📧 정기 보고서 수신자</h3></div>
+      <div class="flex flex-wrap gap-2 mb-3">${store.reportRecipients.map(r=>`<span class="inline-flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg text-xs font-bold">${store.user(r)?.name||r}<button onclick="router.delRecipient('${r}')" class="text-red-400">×</button></span>`).join('')}</div>
+      <select onchange="router.addRecipient(this.value)" class="p-3 border rounded-xl font-bold"><option value="">+ 수신자 추가</option>${store.users.filter(u=>!store.reportRecipients.includes(u.id)).map(u=>`<option value="${u.id}">${u.name}</option>`).join('')}</select>
+    </div>`;
+    
     setTimeout(()=>{
-      const pL=store.properties.map(p=>p.name.slice(0,8));
-      const pR=store.properties.map(p=>store.bookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+b.price,0));
-      const pC=store.properties.map(p=>store.expenses.filter(e=>e.propId===p.id).reduce((s,e)=>s+e.amount,0));
-      new Chart(document.getElementById('c1'),{type:'bar',data:{labels:pL,datasets:[{label:'매출',data:pR,backgroundColor:'#2563eb'},{label:'지출',data:pC,backgroundColor:'#ef4444'}]},options:{scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
-      const cat={};store.expenses.forEach(e=>cat[e.category]=(cat[e.category]||0)+e.amount);
+      const pL = store.properties.map(p=>p.name.slice(0,8));
+      const pR = store.properties.map(p=>store.bookings.filter(b=>b.propId===p.id).reduce((s,b)=>s+b.price,0));
+      // 숙소별 지출도 초기투자 제외 적용
+      const pC = store.properties.map(p=>{
+        const exp = store.expenses.filter(e=>e.propId===p.id);
+        return showAll 
+          ? exp.reduce((s,e)=>s+e.amount,0)
+          : exp.filter(e=>e.majorCat!=='초기투자지출').reduce((s,e)=>s+e.amount,0);
+      });
+      new Chart(document.getElementById('c1'),{type:'bar',data:{labels:pL,datasets:[{label:'매출',data:pR,backgroundColor:'#2563eb'},{label:showAll?'전체지출':'운영지출',data:pC,backgroundColor:'#ef4444'}]},options:{scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+      
+      // 카테고리 분포 (초기투자 제외 시 변동/고정만 표시)
+      const cat = {};
+      const targetExp = showAll ? store.expenses : store.expenses.filter(e=>e.majorCat!=='초기투자지출');
+      targetExp.forEach(e=>cat[e.category]=(cat[e.category]||0)+e.amount);
       new Chart(document.getElementById('c2'),{type:'doughnut',data:{labels:Object.keys(cat),datasets:[{data:Object.values(cat),backgroundColor:['#2563eb','#ef4444','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#6366f1']}]}});
     },100);
   }
