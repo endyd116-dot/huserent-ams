@@ -513,7 +513,7 @@ class Router {
     await this.renderAdminTab();
   }
   
-  renderAdminNav() {
+   renderAdminNav() {
     const items = [
       ['main','home','MAIN 대시보드'],
       ['siteConfig','palette','🎨 메인화면 관리'],
@@ -525,7 +525,6 @@ class Router {
       ['bookings','calendar','예약 관리'],
       ['stats','bar-chart-3','통계/보고서'],
       ['analytics','line-chart','📈 고급 분석'],
-      ['ops','clipboard-list','운영 관리'],
       ['customers','users','고객 관리'],
       ['users','user-cog','이용자/권한'],
       ['profileReq','user-check','프로필 요청'],
@@ -537,7 +536,6 @@ class Router {
       ['etc','package','기타 관리'],
       ['version','git-branch','📦 플랫폼 버전 관리']
     ];
-    
     const pending = store.pendingProfileRequests().length;
     document.getElementById('anav').innerHTML = items.map(([k,i,l])=>`<a onclick="router.adminTab='${k}';router.renderAdminNav();router.renderAdminTab()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition ${this.adminTab===k?'bg-blue-600 text-white font-black shadow-lg':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${i}" class="w-4 h-4"></i><span class="text-xs flex-1">${l}</span>${k==='profileReq'&&pending?`<span class="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">${pending}</span>`:''}</a>`).join('');
     lucide.createIcons();
@@ -547,14 +545,37 @@ class Router {
     const c = document.getElementById('abody');
     if (!c) return;
     const fn = {
-      main:this.admMain, siteConfig:this.admSiteConfig, aiInsights:this.admAIInsights, smartPricing:this.admSmartPricing,
-      props:this.admProps, sales:this.admSales, expenses:this.admExpenses, bookings:this.admBookings,
-      stats:this.admStats, analytics:this.admAnalytics, ops:this.admOps, customers:this.admCustomers,
-      users:this.admUsers, profileReq:this.admProfileReq, security:this.admSecurity, backup:this.admBackup,
-      chats:this.admChats, logs:this.admLogs, staff:this.admStaff, etc:this.admEtc, version:this.admVersion
+      main: this.admMain,
+      siteConfig: this.admSiteConfig,
+      aiInsights: this.admAIInsights,
+      smartPricing: this.admSmartPricing,
+      props: this.admProps,
+      sales: this.admSales,
+      expenses: this.admExpenses,
+      bookings: this.admBookings,
+      stats: this.admStats,
+      analytics: this.admAnalytics,
+      customers: this.admCustomers,
+      users: this.admUsers,
+      profileReq: this.admProfileReq,
+      security: this.admSecurity,
+      backup: this.admBackup,
+      chats: this.admChats,
+      logs: this.admLogs,
+      staff: this.admStaff,
+      etc: this.admEtc,
+      version: this.admVersion
     }[this.adminTab];
-    if (fn) fn.call(this, c);
-    else c.innerHTML = UI.Empty('alert-triangle','준비 중','이 메뉴는 다음 업데이트에서 제공됩니다');
+    if (fn) {
+      try {
+        fn.call(this, c);
+      } catch(e) {
+        console.error('Admin tab error:', e);
+        c.innerHTML = `<div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6"><h3 class="font-black text-red-700 mb-2">⚠️ 오류 발생</h3><p class="text-sm">${e.message}</p><button onclick="router.adminTab='main';router.renderAdminNav();router.renderAdminTab()" class="mt-4 bg-red-500 text-white px-5 py-2 rounded-xl font-black text-sm">메인으로 이동</button></div>`;
+      }
+    } else {
+      c.innerHTML = `<div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 text-center"><h3 class="font-black text-amber-700">⚠️ 메뉴를 찾을 수 없습니다</h3><button onclick="router.adminTab='main';router.renderAdminNav();router.renderAdminTab()" class="mt-4 bg-amber-500 text-white px-5 py-2 rounded-xl font-black text-sm">메인으로</button></div>`;
+    }
     lucide.createIcons();
   }
 
@@ -1564,29 +1585,237 @@ class Router {
     await this.renderAdminTab();
   }
   // ===== 직원 관리 =====
-  admStaff(c) {
-    const cur = this._staffDate;
-    const year = cur.getFullYear(), month = cur.getMonth();
-    const allSched = store.schedule.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-    const monthSched = allSched.filter(s => (s.date||'').startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
-    c.innerHTML = `<div class="flex justify-between items-center mb-6 flex-wrap gap-3"><h2 class="text-3xl font-black">👷 직원 관리</h2><div class="flex gap-2 items-center flex-wrap"><button onclick="router._staffDate.setMonth(router._staffDate.getMonth()-1);router.renderAdminTab()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router._staffDate.setMonth(router._staffDate.getMonth()+1);router.renderAdminTab()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button onclick="router._staffDate=new Date();router.renderAdminTab()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button><div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.staffMode='cal';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.staffMode!=='list'?'bg-white shadow':'text-slate-500'}">캘린더</button><button onclick="router.staffMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.staffMode==='list'?'bg-white shadow':'text-slate-500'}">리스트</button></div><button onclick="router.showScheduleForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄</button></div></div>`;
-    if (this.staffMode==='list') {
-      c.innerHTML += `<div class="bg-white rounded-2xl border overflow-hidden mb-6"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">직원 리스트</h3></div><div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['No.','태그','이름','역할','연락처','이메일','담당','비고'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${store.users.filter(u=>u.role!=='Admin').map((u,i)=>`<tr><td class="px-4 py-3 font-black">${i+1}</td><td class="px-4 py-3">${mgrTag(u.id)}</td><td class="px-4 py-3 font-black">${u.name}</td><td class="px-4 py-3 text-xs font-black">${u.role}</td><td class="px-4 py-3 text-xs font-mono">${u.contact||'-'}</td><td class="px-4 py-3 text-xs">${u.email||'-'}</td><td class="px-4 py-3 text-xs font-bold text-blue-600">${u.permissions?.length||0}개</td><td class="px-4 py-3 text-xs text-slate-500">${u.memo||'-'}</td></tr>`).join('')}</tbody></table></div></div><div class="bg-white rounded-2xl border overflow-hidden"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">📋 ${year}년 ${month+1}월 스케줄 (${monthSched.length}건)</h3></div><div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr>${['일시','담당자','숙소','업무','알람','메모','관리'].map(h=>`<th class="px-4 py-3 text-left">${h}</th>`).join('')}</tr></thead><tbody class="text-sm divide-y">${monthSched.length?monthSched.map(s=>`<tr><td class="px-4 py-3 font-black">${s.date} ${s.time}</td><td class="px-4 py-3">${s.staff}</td><td class="px-4 py-3 text-xs">${store.prop(s.propId)?.name||'-'}</td><td class="px-4 py-3">${s.task}</td><td class="px-4 py-3 text-xs">${(s.alarm||[]).map(a=>a+'분').join(', ')||'없음'}</td><td class="px-4 py-3 text-xs text-slate-500">${s.memo||'-'}</td><td class="px-4 py-3"><button onclick="router.delScheduleAdm(${s.id})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join(''):'<tr><td colspan="7" class="text-center py-8 text-slate-400 font-bold">이번 달 스케줄 없음</td></tr>'}</tbody></table></div></div>`;
+    admStaff(c) {
+    const cur = this._staffDate || new Date();
+    this._staffDate = cur;
+    const year = cur.getFullYear();
+    const month = cur.getMonth();
+    const allSched = (store.schedule || []).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const monthSched = allSched.filter(s => (s.date || '').startsWith(`${year}-${String(month + 1).padStart(2, '0')}`));
+    const staffMode = this.staffMode || 'cal';
+    const nonAdminUsers = (store.users || []).filter(u => u.role !== 'Admin');
+    
+    c.innerHTML = `
+      <div class="flex justify-between items-center mb-6 flex-wrap gap-3">
+        <div>
+          <h2 class="text-3xl font-black">👷 직원 관리</h2>
+          <p class="text-slate-500 mt-1">${year}년 ${month + 1}월 · ${monthSched.length}건 스케줄</p>
+        </div>
+        <div class="flex gap-2 items-center flex-wrap">
+          <button onclick="router._staffDate.setMonth(router._staffDate.getMonth()-1);router.renderAdminTab()" class="bg-slate-100 px-3 py-3 rounded-xl">
+            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+          </button>
+          <span class="font-black text-sm px-2">${year}.${month + 1}</span>
+          <button onclick="router._staffDate.setMonth(router._staffDate.getMonth()+1);router.renderAdminTab()" class="bg-slate-100 px-3 py-3 rounded-xl">
+            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+          </button>
+          <button onclick="router._staffDate=new Date();router.renderAdminTab()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button>
+          <div class="bg-slate-100 rounded-xl p-1 flex">
+            <button onclick="router.staffMode='cal';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${staffMode !== 'list' ? 'bg-white shadow' : 'text-slate-500'}">캘린더</button>
+            <button onclick="router.staffMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${staffMode === 'list' ? 'bg-white shadow' : 'text-slate-500'}">리스트</button>
+          </div>
+          <button onclick="router.showScheduleForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄</button>
+        </div>
+      </div>
+    `;
+    
+    if (staffMode === 'list') {
+      c.innerHTML += `
+        <div class="bg-white rounded-2xl border overflow-hidden mb-6">
+          <div class="p-4 border-b bg-slate-50">
+            <h3 class="font-black text-sm uppercase">👥 직원 리스트 (${nonAdminUsers.length}명)</h3>
+          </div>
+          ${nonAdminUsers.length === 0 ? UI.Empty('users','직원이 없습니다','이용자/권한 메뉴에서 직원을 추가하세요') : `
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase">
+                  <tr>
+                    <th class="px-4 py-3 text-left">No.</th>
+                    <th class="px-4 py-3 text-left">태그</th>
+                    <th class="px-4 py-3 text-left">이름</th>
+                    <th class="px-4 py-3 text-left">역할</th>
+                    <th class="px-4 py-3 text-left">연락처</th>
+                    <th class="px-4 py-3 text-left">이메일</th>
+                    <th class="px-4 py-3 text-left">담당 매물</th>
+                    <th class="px-4 py-3 text-left">비고</th>
+                  </tr>
+                </thead>
+                <tbody class="text-sm divide-y">
+                  ${nonAdminUsers.map((u, i) => `
+                    <tr class="hover:bg-blue-50/30">
+                      <td class="px-4 py-3 font-black">${i + 1}</td>
+                      <td class="px-4 py-3">${mgrTag(u.id)}</td>
+                      <td class="px-4 py-3 font-black">${u.name}</td>
+                      <td class="px-4 py-3 text-xs font-black">${u.role}</td>
+                      <td class="px-4 py-3 text-xs font-mono">${u.contact || '-'}</td>
+                      <td class="px-4 py-3 text-xs">${u.email || '-'}</td>
+                      <td class="px-4 py-3 text-xs font-bold text-blue-600">${(u.permissions || []).length}개</td>
+                      <td class="px-4 py-3 text-xs text-slate-500">${u.memo || '-'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+        
+        <div class="bg-white rounded-2xl border overflow-hidden">
+          <div class="p-4 border-b bg-slate-50">
+            <h3 class="font-black text-sm uppercase">📋 ${year}년 ${month + 1}월 스케줄 (${monthSched.length}건)</h3>
+          </div>
+          ${monthSched.length === 0 ? UI.Empty('calendar-x','이번 달 스케줄이 없습니다','+ 스케줄 버튼으로 등록하세요') : `
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase">
+                  <tr>
+                    <th class="px-4 py-3 text-left">일시</th>
+                    <th class="px-4 py-3 text-left">담당자</th>
+                    <th class="px-4 py-3 text-left">숙소</th>
+                    <th class="px-4 py-3 text-left">업무</th>
+                    <th class="px-4 py-3 text-left">알람</th>
+                    <th class="px-4 py-3 text-left">메모</th>
+                    <th class="px-4 py-3 text-center">관리</th>
+                  </tr>
+                </thead>
+                <tbody class="text-sm divide-y">
+                  ${monthSched.map(s => `
+                    <tr class="hover:bg-blue-50/30">
+                      <td class="px-4 py-3 font-black">${s.date} ${s.time}</td>
+                      <td class="px-4 py-3">${s.staff}</td>
+                      <td class="px-4 py-3 text-xs">${store.prop(s.propId)?.name || '-'}</td>
+                      <td class="px-4 py-3">${s.task}</td>
+                      <td class="px-4 py-3 text-xs">${(s.alarm || []).map(a => a + '분').join(', ') || '없음'}</td>
+                      <td class="px-4 py-3 text-xs text-slate-500">${s.memo || '-'}</td>
+                      <td class="px-4 py-3 text-center">
+                        <button onclick="router.delScheduleAdm(${s.id})" class="text-red-500 hover:bg-red-50 rounded p-1">
+                          <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+      `;
     } else {
+      // 캘린더 모드
       const first = new Date(year, month, 1);
       const startDow = first.getDay();
-      const days = new Date(year, month+1, 0).getDate();
-      let html = `<div class="bg-white p-6 rounded-2xl border"><h3 class="text-xl font-black mb-4">${year}년 ${month+1}월 직원 스케줄</h3><div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">${['일','월','화','수','목','금','토'].map(d=>`<div class="text-center py-2">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">`;
-      for (let i=0; i<startDow; i++) html += `<div class="min-h-[110px] bg-slate-50/50 rounded-lg"></div>`;
-      for (let d=1; d<=days; d++) {
-        const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const sch = monthSched.filter(s=>s.date===ds);
-        html += `<div class="min-h-[110px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${sch.slice(0,3).map(s=>`<div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 bg-purple-100 text-purple-700">${s.time} ${(s.staff||'').slice(0,3)} ${(s.task||'').slice(0,5)}</div>`).join('')}${sch.length>3?`<div class="text-[8px] text-slate-400 mt-0.5">+${sch.length-3}건</div>`:''}</div>`;
+      const days = new Date(year, month + 1, 0).getDate();
+      let html = `
+        <div class="bg-white p-6 rounded-2xl border">
+          <h3 class="text-xl font-black mb-4">${year}년 ${month + 1}월 직원 스케줄 캘린더</h3>
+          <div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">
+            ${['일', '월', '화', '수', '목', '금', '토'].map(d => `<div class="text-center py-2">${d}</div>`).join('')}
+          </div>
+          <div class="grid grid-cols-7 gap-1">
+      `;
+      for (let i = 0; i < startDow; i++) {
+        html += `<div class="min-h-[110px] bg-slate-50/50 rounded-lg"></div>`;
+      }
+      for (let d = 1; d <= days; d++) {
+        const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const sch = monthSched.filter(s => s.date === ds);
+        html += `
+          <div class="min-h-[110px] border rounded-lg p-1.5 ${ds === todayStr() ? 'ring-2 ring-blue-500' : ''}">
+            <div class="text-xs font-black">${d}</div>
+            ${sch.slice(0, 3).map(s => `
+              <div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 bg-purple-100 text-purple-700">
+                ${s.time} ${(s.staff || '').slice(0, 3)}
+              </div>
+            `).join('')}
+            ${sch.length > 3 ? `<div class="text-[8px] text-slate-400 mt-0.5">+${sch.length - 3}건</div>` : ''}
+          </div>
+        `;
       }
       html += `</div></div>`;
       c.innerHTML += html;
     }
+    
     lucide.createIcons();
+  }
+
+  showScheduleForm() {
+    if (!store.users || !store.users.filter(u => u.role !== 'Admin').length) {
+      toast('등록된 직원이 없습니다. 이용자/권한 메뉴에서 직원을 먼저 추가하세요.', 'error');
+      return;
+    }
+    if (!store.properties || !store.properties.length) {
+      toast('등록된 매물이 없습니다.', 'error');
+      return;
+    }
+    
+    openModal('📅 스케줄 등록', `
+      <form id="sf" class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <input type="date" name="date" value="${todayStr()}" class="p-3 border rounded-xl font-bold" required>
+          <input type="time" name="time" value="10:00" class="p-3 border rounded-xl font-bold" required>
+        </div>
+        <select name="staff" class="w-full p-3 border rounded-xl font-bold" required>
+          <option value="">담당자 선택</option>
+          ${store.users.filter(u => u.role !== 'Admin').map(u => `<option>${u.name}</option>`).join('')}
+        </select>
+        <select name="propId" class="w-full p-3 border rounded-xl font-bold" required>
+          <option value="">숙소 선택</option>
+          ${store.properties.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+        </select>
+        <input name="task" placeholder="업무 내용 (예: 퇴실 청소)" class="w-full p-3 border rounded-xl font-bold" required>
+        <div class="bg-slate-50 p-4 rounded-xl">
+          <p class="text-xs font-black text-slate-500 uppercase mb-2">🔔 알람 (복수 선택)</p>
+          <div class="flex gap-2 flex-wrap">
+            ${[5, 15, 30, 60].map(m => `
+              <label class="flex items-center gap-1 px-3 py-2 bg-white rounded-lg cursor-pointer font-bold text-xs">
+                <input type="checkbox" name="a${m}"> ${m}분 전
+              </label>
+            `).join('')}
+          </div>
+        </div>
+        <input name="memo" placeholder="메모 (선택)" class="w-full p-3 border rounded-xl font-bold">
+        <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">등록 + 담당자 알림 발송</button>
+      </form>
+    `, 'max-w-xl');
+    
+    document.getElementById('sf').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const d = {};
+      fd.forEach((v, k) => { d[k] = v; });
+      const alarm = [];
+      [5, 15, 30, 60].forEach(m => {
+        if (d['a' + m]) alarm.push(m);
+        delete d['a' + m];
+      });
+      d.alarm = alarm;
+      
+      showLoading(true);
+      try {
+        await store.addSchedule(d);
+        toast('등록 + 담당자 알림 발송 완료', 'success');
+        closeModal();
+        await this.renderAdminTab();
+      } catch(err) {
+        toast('실패: ' + err.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+    lucide.createIcons();
+  }
+
+  async delScheduleAdm(id) {
+    if (!confirm('이 스케줄을 삭제하시겠습니까?')) return;
+    showLoading(true);
+    try {
+      await store.delSchedule(id);
+      toast('삭제됨', 'success');
+      await this.renderAdminTab();
+    } catch(e) {
+      toast('실패: ' + e.message, 'error');
+    } finally {
+      showLoading(false);
+    }
   }
   
   showScheduleForm() {
@@ -2022,6 +2251,642 @@ class Router {
       </div>
     `, 'max-w-2xl');
   }
+    admUsers(c) {
+    if (!store.users || !store.users.length) {
+      c.innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-black">🔐 이용자/권한 관리</h2><button onclick="router.showUserForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 신규 계정</button></div>${UI.Empty('users','이용자가 없습니다','+ 신규 계정 버튼으로 등록하세요')}`;
+      return;
+    }
+    c.innerHTML = `
+      <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <h2 class="text-3xl font-black">🔐 이용자/권한 관리 (${store.users.length}명)</h2>
+        <button onclick="router.showUserForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 신규 계정</button>
+      </div>
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700">
+        💡 Admin: 모든 권한 · Manager: 배정 매물만 · Director: 모든 매물 조회 (수정 불가)
+      </div>
+      <div class="bg-white rounded-2xl border overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase">
+            <tr>
+              <th class="px-4 py-3 text-left">ID</th>
+              <th class="px-4 py-3 text-left">이름</th>
+              <th class="px-4 py-3 text-left">역할</th>
+              <th class="px-4 py-3 text-left">색상</th>
+              <th class="px-4 py-3 text-left">연락처</th>
+              <th class="px-4 py-3 text-left">이메일</th>
+              <th class="px-4 py-3 text-left">권한</th>
+              <th class="px-4 py-3 text-left">2FA</th>
+              <th class="px-4 py-3 text-center">관리</th>
+            </tr>
+          </thead>
+          <tbody class="text-sm divide-y">
+            ${store.users.map(u => {
+              const roleColor = u.role === 'Admin' ? 'bg-amber-100 text-amber-700' : u.role === 'Manager' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600';
+              const nick = (u.name.match(/\((.+)\)/) || [, u.name])[1];
+              const permText = u.role === 'Admin' ? '전체' : u.role === 'Director' ? '뷰(전체)' : `${(u.permissions || []).length}개`;
+              return `<tr class="hover:bg-blue-50/30">
+                <td class="px-4 py-3 font-mono font-black">${u.id}</td>
+                <td class="px-4 py-3 font-black">${u.name}</td>
+                <td class="px-4 py-3"><span class="px-2 py-1 rounded text-[10px] font-black ${roleColor}">${u.role}</span></td>
+                <td class="px-4 py-3"><span class="tag-mgr" style="background:${u.tagColor || '#94a3b8'}">${nick}</span></td>
+                <td class="px-4 py-3 text-xs">${u.contact || '-'}</td>
+                <td class="px-4 py-3 text-xs">${u.email || '-'}</td>
+                <td class="px-4 py-3 text-xs font-black text-blue-600">${permText}</td>
+                <td class="px-4 py-3 text-xs">${u.use2FA ? '<span class="text-green-600 font-black">✅ ON</span>' : '<span class="text-slate-300">OFF</span>'}</td>
+                <td class="px-4 py-3 text-center">
+                  <button onclick="router.showUserForm('${u.id}')" class="p-2 bg-slate-100 rounded-lg mr-1" title="수정"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                  ${u.id !== 'admin' ? `<button onclick="router.delUser('${u.id}')" class="p-2 bg-red-50 text-red-500 rounded-lg" title="삭제"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    lucide.createIcons();
+  }
+
+  showUserForm(uid = null) {
+    const u = uid ? store.user(uid) : { id: '', pw: '', name: '', role: 'Manager', contact: '', email: '', memo: '', permissions: [], tagColor: '#60a5fa', use2FA: false, otpSecret: '' };
+    if (!u) { toast('사용자를 찾을 수 없습니다', 'error'); return; }
+    
+    openModal(uid ? '✏️ 이용자 수정' : '🆕 신규 계정', `
+      <form id="uf" class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[10px] font-black text-slate-400 uppercase">아이디</label>
+            <input name="id" value="${u.id}" placeholder="아이디" class="w-full p-3 border rounded-xl font-bold mt-1" ${uid ? 'readonly' : 'required'}>
+          </div>
+          <div>
+            <label class="text-[10px] font-black text-slate-400 uppercase">비밀번호</label>
+            <input name="pw" value="${u.pw || ''}" placeholder="비밀번호" class="w-full p-3 border rounded-xl font-bold mt-1" required>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[10px] font-black text-slate-400 uppercase">이름 (예: 박보람(맨투))</label>
+            <input name="name" value="${u.name}" placeholder="이름" class="w-full p-3 border rounded-xl font-bold mt-1" required>
+          </div>
+          <div>
+            <label class="text-[10px] font-black text-slate-400 uppercase">역할</label>
+            <select name="role" class="w-full p-3 border rounded-xl font-bold mt-1">
+              <option value="Admin" ${u.role === 'Admin' ? 'selected' : ''}>Admin</option>
+              <option value="Manager" ${u.role === 'Manager' ? 'selected' : ''}>Manager</option>
+              <option value="Director" ${u.role === 'Director' ? 'selected' : ''}>Director</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <input name="contact" value="${u.contact || ''}" placeholder="연락처" class="p-3 border rounded-xl font-bold">
+          <input name="email" value="${u.email || ''}" placeholder="이메일" class="p-3 border rounded-xl font-bold">
+          <input type="color" name="tagColor" value="${u.tagColor || '#60a5fa'}" class="p-2 border rounded-xl h-12">
+        </div>
+        <input name="memo" value="${u.memo || ''}" placeholder="비고" class="w-full p-3 border rounded-xl font-bold">
+        
+        <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+          <label class="flex items-center gap-2 cursor-pointer mb-2">
+            <input type="checkbox" name="use2FA" ${u.use2FA ? 'checked' : ''} class="w-4 h-4">
+            <span class="text-sm font-black text-amber-700">🛡️ 2단계 인증 사용</span>
+          </label>
+          <input name="otpSecret" value="${u.otpSecret || ''}" placeholder="6자리 OTP 코드 (예: 123456)" maxlength="6" class="w-full p-2 border rounded-lg font-mono text-sm">
+        </div>
+        
+        <div class="bg-slate-50 p-4 rounded-xl">
+          <p class="text-xs font-black text-slate-500 uppercase mb-3">🏠 매물 권한 (Manager만 적용)</p>
+          ${store.properties.length === 0 ? '<p class="text-xs text-slate-400 text-center py-3">등록된 매물이 없습니다</p>' : `
+            <div class="grid grid-cols-2 gap-2">
+              ${store.properties.map(p => `
+                <label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer hover:bg-blue-50">
+                  <input type="checkbox" name="perm_${p.id}" ${(u.permissions || []).includes(p.id) ? 'checked' : ''}>
+                  <span class="text-xs font-bold">${p.name}</span>
+                </label>
+              `).join('')}
+            </div>
+          `}
+        </div>
+        
+        <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">${uid ? '수정 저장' : '계정 생성'}</button>
+      </form>
+    `, 'max-w-2xl');
+    
+    document.getElementById('uf').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const d = {};
+      fd.forEach((v, k) => { d[k] = v; });
+      d.use2FA = !!d.use2FA;
+      
+      // 권한 수집
+      const perms = [];
+      store.properties.forEach(p => {
+        if (d['perm_' + p.id]) perms.push(p.id);
+        delete d['perm_' + p.id];
+      });
+      d.permissions = perms;
+      
+      // 비밀번호 정책 검증
+      if (d.pw && store.validatePassword) {
+        const v = store.validatePassword(d.pw);
+        if (!v.valid) { 
+          toast('비밀번호: ' + v.errors.join(', '), 'error'); 
+          return; 
+        }
+      }
+      
+      showLoading(true);
+      try {
+        await store.upsertUser(d);
+        toast(uid ? '수정 완료' : '계정 생성 완료', 'success');
+        closeModal();
+        await this.renderAdminTab();
+      } catch(err) {
+        toast('실패: ' + err.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+    lucide.createIcons();
+  }
+
+  async delUser(id) {
+    if (id === 'admin') { toast('기본 관리자는 삭제할 수 없습니다', 'error'); return; }
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    showLoading(true);
+    try {
+      await store.delUser(id);
+      toast('삭제됨', 'success');
+      await this.renderAdminTab();
+    } catch(e) {
+      toast('실패: ' + e.message, 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
+    admProfileReq(c) {
+    const all = [...(store.profileRequests || [])].sort((a, b) => b.id - a.id);
+    const pending = all.filter(r => r.status === 'pending');
+    
+    c.innerHTML = `
+      <h2 class="text-3xl font-black mb-2">👤 프로필 변경 요청</h2>
+      <p class="text-slate-500 mb-6">매니저/실장의 정보 변경 요청을 승인 또는 반려합니다</p>
+      
+      <div class="grid grid-cols-3 gap-4 mb-6 mobile-stack">
+        <div class="bg-amber-50 border-2 border-amber-200 p-5 rounded-2xl">
+          <p class="text-[10px] font-black text-amber-600 uppercase">⏳ 대기</p>
+          <p class="text-3xl font-black text-amber-700 mt-2">${pending.length}건</p>
+        </div>
+        <div class="bg-green-50 border-2 border-green-200 p-5 rounded-2xl">
+          <p class="text-[10px] font-black text-green-600 uppercase">✅ 승인</p>
+          <p class="text-3xl font-black text-green-700 mt-2">${all.filter(r=>r.status==='approved').length}건</p>
+        </div>
+        <div class="bg-red-50 border-2 border-red-200 p-5 rounded-2xl">
+          <p class="text-[10px] font-black text-red-600 uppercase">❌ 반려</p>
+          <p class="text-3xl font-black text-red-700 mt-2">${all.filter(r=>r.status==='rejected').length}건</p>
+        </div>
+      </div>
+      
+      ${all.length === 0 ? UI.Empty('inbox', '요청이 없습니다', '매니저/실장이 정보 변경을 요청하면 여기에 표시됩니다') : `
+        <div class="space-y-4">
+          ${all.map(r => {
+            const sc = {
+              pending: 'bg-amber-50 border-amber-300',
+              approved: 'bg-green-50 border-green-300',
+              rejected: 'bg-red-50 border-red-300'
+            }[r.status] || 'bg-slate-50 border-slate-200';
+            const st = {
+              pending: '⏳ 대기',
+              approved: '✅ 승인',
+              rejected: '❌ 반려'
+            }[r.status];
+            const stBadge = {
+              pending: 'bg-amber-500 text-white',
+              approved: 'bg-green-500 text-white',
+              rejected: 'bg-red-500 text-white'
+            }[r.status];
+            const lbl = { name: '이름', contact: '연락처', email: '이메일', pw: '비밀번호' };
+            return `
+              <div class="${sc} border-2 rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                  <div class="flex items-center gap-3">
+                    <span class="px-3 py-1 ${stBadge} rounded-full font-black text-xs">${st}</span>
+                    <p class="font-black text-lg">${r.userName}</p>
+                  </div>
+                  <span class="text-xs text-slate-500 font-bold">${r.requestedAt}</span>
+                </div>
+                <div class="bg-white p-4 rounded-xl mb-4">
+                  <p class="text-[10px] font-black text-slate-400 uppercase mb-2">변경 내용</p>
+                  ${Object.keys(r.changes || {}).map(k => {
+                    const ov = k === 'pw' ? '****' : (r.original?.[k] || '(없음)');
+                    const nv = k === 'pw' ? '****' : r.changes[k];
+                    return `
+                      <div class="flex items-center gap-2 text-sm py-1.5">
+                        <span class="font-black w-20 text-slate-600">${lbl[k] || k}:</span>
+                        <span class="text-slate-400 line-through">${ov}</span>
+                        <i data-lucide="arrow-right" class="w-3 h-3 text-blue-500"></i>
+                        <span class="text-blue-600 font-black">${nv}</span>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+                ${r.reason ? `<div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3"><p class="text-xs font-black text-red-700">📝 반려 사유: ${r.reason}</p></div>` : ''}
+                ${r.status === 'pending' ? `
+                  <div class="flex gap-2">
+                    <button onclick="router.approveReq(${r.id})" class="flex-1 bg-green-500 text-white py-3 rounded-xl font-black hover:bg-green-600 transition">✅ 승인</button>
+                    <button onclick="router.rejectReq(${r.id})" class="flex-1 bg-red-500 text-white py-3 rounded-xl font-black hover:bg-red-600 transition">❌ 반려</button>
+                  </div>
+                ` : `<p class="text-xs text-slate-400 font-bold">처리: ${r.processedAt || '-'} · 처리자: ${r.processedBy || '-'}</p>`}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `}
+    `;
+    lucide.createIcons();
+  }
+
+  async approveReq(id) {
+    if (!confirm('이 요청을 승인하시겠습니까?')) return;
+    showLoading(true);
+    try {
+      await store.approveProfileChange(id);
+      toast('승인 완료', 'success');
+      await this.renderAdminTab();
+      this.renderAdminNav();
+    } catch(e) {
+      toast('실패: ' + e.message, 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  async rejectReq(id) {
+    const reason = prompt('반려 사유를 입력하세요 (선택)') || '';
+    showLoading(true);
+    try {
+      await store.rejectProfileChange(id, reason);
+      toast('반려 처리됨', 'warning');
+      await this.renderAdminTab();
+      this.renderAdminNav();
+    } catch(e) {
+      toast('실패: ' + e.message, 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
+    admSecurity(c) {
+    const s = store.securitySettings || {
+      sessionTimeoutMin: 30,
+      require2FA: false,
+      minPasswordLength: 4,
+      passwordRequireSpecial: false,
+      ipTracking: true
+    };
+    
+    c.innerHTML = `
+      <div class="mb-6">
+        <h2 class="text-3xl font-black">🔒 보안 설정</h2>
+        <p class="text-slate-500 mt-1">세션 관리 · 비밀번호 정책 · IP 추적 · 2단계 인증</p>
+      </div>
+      
+      <form id="secForm" class="space-y-5">
+        <div class="bg-white border-2 rounded-2xl p-6">
+          <h3 class="font-black mb-4 flex items-center gap-2">
+            <i data-lucide="clock" class="w-5 h-5"></i>세션 자동 로그아웃
+          </h3>
+          <div>
+            <label class="text-xs font-black text-slate-500 uppercase">미사용 시간 (분)</label>
+            <input type="number" name="sessionTimeoutMin" value="${s.sessionTimeoutMin || 30}" min="5" max="240" class="w-full p-4 border-2 rounded-xl text-2xl font-black mt-1">
+            <p class="text-[10px] text-slate-400 mt-2">💡 설정 시간 동안 마우스/키보드 입력이 없으면 자동 로그아웃</p>
+          </div>
+        </div>
+        
+        <div class="bg-white border-2 rounded-2xl p-6">
+          <h3 class="font-black mb-4 flex items-center gap-2">
+            <i data-lucide="key" class="w-5 h-5"></i>비밀번호 정책
+          </h3>
+          <div class="grid grid-cols-2 gap-4 mobile-stack">
+            <div>
+              <label class="text-xs font-black text-slate-500 uppercase">최소 길이</label>
+              <input type="number" name="minPasswordLength" value="${s.minPasswordLength || 4}" min="4" max="20" class="w-full p-4 border-2 rounded-xl font-bold mt-1">
+            </div>
+            <div class="flex items-center">
+              <label class="flex items-center gap-3 cursor-pointer p-3 hover:bg-slate-50 rounded-lg w-full">
+                <input type="checkbox" name="passwordRequireSpecial" ${s.passwordRequireSpecial ? 'checked' : ''} class="w-5 h-5">
+                <span class="font-bold text-sm">특수문자 1개 이상 포함</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <div class="bg-white border-2 rounded-2xl p-6">
+          <h3 class="font-black mb-4 flex items-center gap-2">
+            <i data-lucide="globe" class="w-5 h-5"></i>활동 추적
+          </h3>
+          <label class="flex items-center gap-3 cursor-pointer p-3 hover:bg-slate-50 rounded-lg">
+            <input type="checkbox" name="ipTracking" ${s.ipTracking ? 'checked' : ''} class="w-5 h-5">
+            <span class="font-bold text-sm">IP 주소 자동 기록 (로그인/로그아웃 시)</span>
+          </label>
+          <p class="text-[10px] text-slate-400 mt-2">💡 비정상 접속 감지에 도움 · 로그 관리에서 확인 가능</p>
+        </div>
+        
+        <div class="bg-white border-2 rounded-2xl p-6">
+          <h3 class="font-black mb-4 flex items-center gap-2">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>2단계 인증 (전체 적용)
+          </h3>
+          <label class="flex items-center gap-3 cursor-pointer p-3 hover:bg-slate-50 rounded-lg">
+            <input type="checkbox" name="require2FA" ${s.require2FA ? 'checked' : ''} class="w-5 h-5">
+            <span class="font-bold text-sm">로그인 시 2단계 인증 코드 요구</span>
+          </label>
+          <p class="text-[10px] text-slate-400 mt-2">💡 활성화 후 이용자 관리에서 각 사용자의 OTP 시크릿 설정 필요</p>
+        </div>
+        
+        <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 text-xs font-bold text-amber-700">
+          ⚠️ 보안 설정은 즉시 적용됩니다 · 모든 사용자에게 영향
+        </div>
+        
+        <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 보안 설정 저장</button>
+      </form>
+    `;
+    
+    document.getElementById('secForm').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const d = {
+        sessionTimeoutMin: +fd.get('sessionTimeoutMin') || 30,
+        minPasswordLength: +fd.get('minPasswordLength') || 4,
+        passwordRequireSpecial: !!fd.get('passwordRequireSpecial'),
+        ipTracking: !!fd.get('ipTracking'),
+        require2FA: !!fd.get('require2FA')
+      };
+      showLoading(true);
+      try {
+        await store.saveSecuritySettings(d);
+        if (store.startSessionTimer) store.startSessionTimer();
+        toast('✅ 보안 설정 저장됨', 'success');
+        await this.renderAdminTab();
+      } catch(err) {
+        toast('실패: ' + err.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+    lucide.createIcons();
+  }
+    admBackup(c) {
+    c.innerHTML = `
+      <div class="mb-6">
+        <h2 class="text-3xl font-black">💾 백업 / 복원</h2>
+        <p class="text-slate-500 mt-1">전체 데이터를 JSON 파일로 다운로드 또는 복원합니다</p>
+      </div>
+      
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mobile-stack">
+        <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl">
+          <h3 class="font-black text-lg mb-3 flex items-center gap-2">
+            <i data-lucide="download" class="w-6 h-6"></i>📥 백업 다운로드
+          </h3>
+          <p class="text-sm opacity-80 mb-4">현재 모든 데이터를 JSON 파일로 다운로드합니다.</p>
+          <div class="bg-white/10 p-4 rounded-xl mb-4 text-xs space-y-1">
+            <div class="flex justify-between"><span>매물:</span><b>${(store.properties || []).length}개</b></div>
+            <div class="flex justify-between"><span>예약:</span><b>${(store.bookings || []).length}건</b></div>
+            <div class="flex justify-between"><span>지출:</span><b>${(store.expenses || []).length}건</b></div>
+            <div class="flex justify-between"><span>채팅:</span><b>${(store.chats || []).length}개</b></div>
+            <div class="flex justify-between"><span>이용자:</span><b>${(store.users || []).length}명</b></div>
+            <div class="flex justify-between"><span>스케줄:</span><b>${(store.schedule || []).length}건</b></div>
+          </div>
+          <button onclick="router.exportBackup()" class="w-full bg-white text-blue-600 py-4 rounded-xl font-black uppercase hover:bg-blue-50 transition">
+            💾 JSON 다운로드
+          </button>
+        </div>
+        
+        <div class="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-6 rounded-2xl">
+          <h3 class="font-black text-lg mb-3 flex items-center gap-2">
+            <i data-lucide="upload" class="w-6 h-6"></i>📤 백업 복원
+          </h3>
+          <p class="text-sm opacity-90 mb-4">⚠️ 기존 데이터가 백업 파일의 데이터로 <b>덮어쓰기</b>됩니다.</p>
+          <div class="bg-white/10 p-4 rounded-xl mb-4 text-xs">
+            <p class="font-bold mb-2">복원 대상:</p>
+            <p class="opacity-90">매물 · 예약 · 지출 · 채팅 · 스케줄 · 인터넷 · 물품 · 그룹 · 플랫폼 · 카테고리 · 고객메모 · 사이트설정</p>
+            <p class="font-bold mt-2 text-yellow-200">🚫 보안상 비밀번호는 복원되지 않습니다</p>
+          </div>
+          <label class="block w-full">
+            <input type="file" id="backupFile" accept=".json" class="hidden">
+            <div class="bg-white text-amber-700 py-4 rounded-xl font-black uppercase hover:bg-amber-50 text-center cursor-pointer transition">
+              📂 JSON 파일 선택
+            </div>
+          </label>
+        </div>
+      </div>
+      
+      <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mt-6">
+        <h3 class="font-black text-red-700 mb-3 flex items-center gap-2">
+          <i data-lucide="alert-triangle" class="w-5 h-5"></i>⚠️ 데이터 보호 안내
+        </h3>
+        <ul class="text-sm text-red-700 font-bold space-y-1 ml-4">
+          <li>• 백업은 <b>주 1회</b> 정기적으로 권장합니다</li>
+          <li>• 복원 전에 반드시 현재 상태도 백업하세요</li>
+          <li>• JSON 파일은 안전한 위치(클라우드 등)에 보관하세요</li>
+          <li>• 복원 시 진행 중인 작업이 모두 사라집니다</li>
+        </ul>
+      </div>
+    `;
+    
+    document.getElementById('backupFile').onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!confirm('⚠️ 현재 데이터가 백업 파일로 덮어쓰기됩니다. 계속하시겠습니까?')) return;
+      showLoading(true);
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const restored = await store.importBackup(data);
+        toast(`✅ ${restored}개 컬렉션 복원 완료`, 'success');
+        await store.loadAll();
+        await this.renderAdmin();
+      } catch(err) {
+        toast('복원 실패: ' + err.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    };
+    lucide.createIcons();
+  }
+  
+  async exportBackup() {
+    showLoading(true);
+    try {
+      const backup = await store.exportBackup();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `QJ-PMS-Backup-${todayStr()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('💾 백업 다운로드 완료', 'success');
+    } catch(e) {
+      toast('실패: ' + e.message, 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
+    admChats(c) {
+    if (!store.properties || !store.properties.length) {
+      c.innerHTML = `<h2 class="text-3xl font-black mb-6">💬 채팅 관리</h2>${UI.Empty('message-square','매물이 없습니다','매물 등록 후 사용 가능합니다')}`;
+      return;
+    }
+    
+    const mode = this.admChatsMode || 'list';
+    const totalChats = (store.chats || []).length;
+    const recentProps = store.properties.filter(p => (store.chats || []).some(c => c.propId === p.id));
+    
+    c.innerHTML = `
+      <div class="flex justify-between items-center mb-6 flex-wrap gap-3">
+        <div>
+          <h2 class="text-3xl font-black">💬 채팅 관리</h2>
+          <p class="text-slate-500 mt-1">매물별 특이사항 채팅 통합 관리 (총 ${totalChats}개 메시지)</p>
+        </div>
+        <div class="bg-slate-100 rounded-xl p-1 flex">
+          <button onclick="router.admChatsMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='list'?'bg-white shadow':'text-slate-500'}">📋 리스트</button>
+          <button onclick="router.admChatsMode='integrated';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='integrated'?'bg-white shadow':'text-slate-500'}">📊 통합</button>
+        </div>
+      </div>
+      
+      <div class="grid grid-cols-3 gap-4 mb-6 mobile-stack">
+        <div class="bg-white p-5 rounded-2xl border">
+          <p class="text-[10px] font-black text-slate-400 uppercase">총 매물</p>
+          <p class="text-2xl font-black mt-2">${store.properties.length}개</p>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border">
+          <p class="text-[10px] font-black text-slate-400 uppercase">대화 진행 중</p>
+          <p class="text-2xl font-black text-green-600 mt-2">${recentProps.length}개</p>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border">
+          <p class="text-[10px] font-black text-slate-400 uppercase">총 메시지</p>
+          <p class="text-2xl font-black text-blue-600 mt-2">${totalChats}건</p>
+        </div>
+      </div>
+    `;
+    
+    if (mode === 'integrated') {
+      c.innerHTML += `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mobile-stack">${store.properties.map(p => {
+        const ch = (store.chats || []).filter(x => x.propId === p.id);
+        return `
+          <div class="bg-white p-4 rounded-2xl border">
+            <h4 class="font-black mb-3 flex items-center gap-2 truncate">
+              ${p.name}
+              ${ch.length ? '<span class="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></span>' : ''}
+            </h4>
+            <div class="h-60 overflow-y-auto scrollbar bg-slate-50 rounded-xl p-3 space-y-2 mb-2">
+              ${ch.length ? ch.slice(-5).map(c => `
+                <div>
+                  <p class="text-[9px] font-black text-slate-400">${c.sender} · ${c.time?.slice(5,16) || ''}</p>
+                  <p class="text-xs font-bold mt-0.5">${c.message}</p>
+                </div>
+              `).join('') : '<p class="text-xs text-slate-400 text-center py-10">대화 없음</p>'}
+            </div>
+            <button onclick="router.showChatBox(${p.id})" class="w-full bg-blue-600 text-white py-2 rounded-lg text-xs font-black hover:bg-blue-700 transition">
+              💬 입장 & 멘트 작성
+            </button>
+          </div>
+        `;
+      }).join('')}</div>`;
+    } else {
+      // 리스트 모드
+      c.innerHTML += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mobile-stack">${store.properties.map(p => {
+        const ch = (store.chats || []).filter(x => x.propId === p.id);
+        const last = ch[ch.length - 1];
+        const img = p.image || (p.images && p.images[p.mainImage || 0]) || 'https://via.placeholder.com/64';
+        return `
+          <div onclick="router.showChatBox(${p.id})" class="bg-white p-5 rounded-2xl border hover:shadow-xl cursor-pointer flex items-center gap-4 transition">
+            <img src="${img}" class="w-16 h-16 rounded-xl object-cover flex-shrink-0" onerror="this.src='https://via.placeholder.com/64'">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <p class="font-black truncate">${p.name}</p>
+                ${ch.length ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-[9px] font-black flex-shrink-0">최근 대화</span>' : ''}
+              </div>
+              <p class="text-xs text-slate-500 truncate mt-1">
+                ${last ? `<b>${last.sender}:</b> ${last.message}` : '대화 없음'}
+              </p>
+              <p class="text-[10px] text-slate-400 font-bold mt-1">
+                ${last ? last.time : ''} · ${ch.length}개 메시지
+              </p>
+            </div>
+            <i data-lucide="chevron-right" class="w-5 h-5 text-slate-300 flex-shrink-0"></i>
+          </div>
+        `;
+      }).join('')}</div>`;
+    }
+    
+    lucide.createIcons();
+  }
+  admLogs(c) {
+    const allLogs = store.logs || [];
+    const specials = allLogs.filter(l => l.special);
+    const today = todayStr();
+    const todayLogs = allLogs.filter(l => l.time && l.time.startsWith(today));
+    
+    c.innerHTML = `
+      <div class="mb-6">
+        <h2 class="text-3xl font-black">📋 로그 관리</h2>
+        <p class="text-slate-500 mt-1">시스템 활동 이력 및 특이사항 모니터링 (최대 500건)</p>
+      </div>
+      
+      <div class="grid grid-cols-3 gap-4 mb-6 mobile-stack">
+        <div class="bg-white p-5 rounded-2xl border">
+          <p class="text-[10px] font-black text-slate-400 uppercase">전체 로그</p>
+          <p class="text-2xl font-black mt-2">${allLogs.length}건</p>
+        </div>
+        <div class="bg-red-50 border-2 border-red-200 p-5 rounded-2xl">
+          <p class="text-[10px] font-black text-red-600 uppercase">특이사항</p>
+          <p class="text-2xl font-black text-red-700 mt-2">${specials.length}건</p>
+        </div>
+        <div class="bg-blue-50 border-2 border-blue-200 p-5 rounded-2xl">
+          <p class="text-[10px] font-black text-blue-600 uppercase">오늘 활동</p>
+          <p class="text-2xl font-black text-blue-700 mt-2">${todayLogs.length}건</p>
+        </div>
+      </div>
+      
+      ${specials.length ? `
+        <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mb-6">
+          <h3 class="font-black text-red-700 mb-3 flex items-center gap-2">
+            <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+            🚨 특이사항 (최근 10건)
+          </h3>
+          <div class="space-y-2">
+            ${specials.slice(0, 10).map(l => `
+              <div class="bg-white p-3 rounded-lg flex items-start gap-3">
+                <span class="w-2 h-2 rounded-full bg-red-500 mt-2 flex-shrink-0"></span>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-black text-red-700">${l.message}</p>
+                  <p class="text-[10px] text-slate-400 font-bold mt-1">${l.time} · ${l.user || 'System'}</p>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+      
+      <div class="bg-white rounded-2xl border overflow-hidden">
+        <div class="p-5 border-b bg-slate-50 flex justify-between items-center flex-wrap gap-2">
+          <h3 class="font-black text-sm uppercase">📜 전체 활동 로그</h3>
+          <span class="text-xs text-slate-400 font-bold">최신순 표시 (최대 100건)</span>
+        </div>
+        <div class="divide-y max-h-[600px] overflow-y-auto scrollbar">
+          ${allLogs.length === 0 ? UI.Empty('list-checks', '로그가 없습니다') : allLogs.slice(0, 100).map(l => `
+            <div class="p-4 flex items-center gap-3 hover:bg-slate-50 ${l.special ? 'bg-red-50/30' : ''}">
+              <div class="w-2 h-2 rounded-full ${l.special ? 'bg-red-500' : 'bg-slate-300'} flex-shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold">${l.message}</p>
+                <p class="text-[10px] text-slate-400 font-bold mt-0.5">${l.time} · ${l.user || 'System'}</p>
+              </div>
+              ${l.special ? '<span class="px-2 py-0.5 bg-red-500 text-white rounded text-[9px] font-black flex-shrink-0">특이</span>' : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+    lucide.createIcons();
+  }
+  
 }
 
 window.Router = Router;
