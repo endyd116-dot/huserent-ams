@@ -1060,7 +1060,6 @@ class Router {
       <div class="bg-white border-2 rounded-2xl p-6">
         <h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="image" class="w-5 h-5"></i>로고 & 브랜드</h3>
         
-        <!-- 🆕 로고 이미지 업로드 -->
         <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4">
           <p class="text-xs font-black text-blue-700 uppercase mb-3">🖼️ 로고 이미지 직접 업로드 (자동 정사각형 조정 · 5MB 이하)</p>
           <div class="flex items-center gap-4 flex-wrap">
@@ -1069,14 +1068,13 @@ class Router {
             </div>
             <div class="flex-1 min-w-[200px]">
               <input type="file" id="logoUpload" accept="image/*" class="w-full p-3 border-2 border-dashed border-blue-300 rounded-xl bg-white font-bold text-sm cursor-pointer">
-              <p class="text-[10px] text-slate-500 font-bold mt-2">💡 어떤 크기든 200x200 정사각형으로 자동 조정됩니다 · PNG/JPG 모두 지원</p>
+              <p class="text-[10px] text-slate-500 font-bold mt-2">💡 어떤 크기든 자동으로 200x200 정사각형으로 조정 · PNG/JPG 모두 지원</p>
               ${cfg.logoImage ? `<button type="button" onclick="router.removeLogoImage()" class="mt-2 bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-black">🗑️ 이미지 제거 (이모지로 변경)</button>` : ''}
             </div>
           </div>
           <input type="hidden" name="logoImage" id="logoImageData" value="${cfg.logoImage || ''}">
         </div>
         
-        <!-- 이모지 폴백 (이미지 없을 때만) -->
         <details class="mb-4 bg-slate-50 rounded-xl p-3">
           <summary class="cursor-pointer text-xs font-bold text-slate-500 hover:text-slate-700">🎭 이미지 없을 때 사용할 이모지 (선택)</summary>
           <div class="mt-3"><input name="logoEmoji" value="${cfg.logoEmoji||'🏢'}" maxlength="2" class="w-32 p-3 border-2 rounded-xl text-2xl text-center font-bold"><p class="text-[10px] text-slate-400 mt-2">예: 🏢 🏠 🏨 ✨</p></div>
@@ -1099,26 +1097,28 @@ class Router {
       <div class="flex gap-3 flex-wrap"><button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 변경사항 저장</button><button type="button" onclick="router.previewSiteConfig()" class="px-6 bg-blue-600 text-white py-4 rounded-xl font-black">👁️ 미리보기</button></div>
     </form>`;
     
-    // 🆕 로고 이미지 업로드 처리
-    const uploadInput = document.getElementById('logoUpload');
-    if (uploadInput) {
-      uploadInput.onchange = async e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        showLoading(true);
-        try {
-          const dataUrl = await store.uploadLogo(file);
-          document.getElementById('logoImageData').value = dataUrl;
-          document.getElementById('logoPreview').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`;
-          toast('✅ 로고 업로드 완료! 저장 버튼을 눌러주세요', 'success');
-        } catch(err) {
-          toast('실패: ' + err.message, 'error');
-        } finally {
-          showLoading(false);
-          e.target.value = '';
-        }
-      };
-    }
+    // 🖼️ 로고 이미지 업로드 핸들러
+    setTimeout(() => {
+      const uploadInput = document.getElementById('logoUpload');
+      if (uploadInput) {
+        uploadInput.onchange = async e => {
+          const file = e.target.files[0];
+          if (!file) return;
+          showLoading(true);
+          try {
+            const dataUrl = await store.uploadLogo(file);
+            document.getElementById('logoImageData').value = dataUrl;
+            document.getElementById('logoPreview').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`;
+            toast('✅ 로고 업로드 완료! 저장 버튼을 눌러주세요', 'success');
+          } catch(err) {
+            toast('실패: ' + err.message, 'error');
+          } finally {
+            showLoading(false);
+            e.target.value = '';
+          }
+        };
+      }
+    }, 100);
     
     document.getElementById('cfgForm').onsubmit = async e => {
       e.preventDefault();
@@ -1138,34 +1138,18 @@ class Router {
     };
     lucide.createIcons();
   }
-  
+
   async removeLogoImage() {
-    if (!confirm('로고 이미지를 제거하시겠습니까? (이모지로 돌아갑니다)')) return;
+    if (!confirm('로고 이미지를 제거하시겠습니까?')) return;
     showLoading(true);
     try {
       await store.saveSiteConfig({ ...store.siteConfig, logoImage: '' });
       toast('이미지 제거됨', 'success');
       await this.renderAdminTab();
-    } catch(e) {
-      toast('실패', 'error');
-    } finally {
-      showLoading(false);
-    }
+    } catch(e) { toast('실패', 'error'); }
+    finally { showLoading(false); }
   }
-  async removeLogoImage() {
-    if (!confirm('로고 이미지를 제거하시겠습니까? (이모지로 돌아갑니다)')) return;
-    showLoading(true);
-    try {
-      await store.saveSiteConfig({ ...store.siteConfig, logoImage: '' });
-      toast('이미지 제거됨', 'success');
-      await this.renderAdminTab();
-    } catch(e) {
-      toast('실패', 'error');
-    } finally {
-      showLoading(false);
-    }
-  }
-  
+
   previewSiteConfig() {
     const form = document.getElementById('cfgForm');
     const fd = new FormData(form);
@@ -1176,8 +1160,24 @@ class Router {
       : `<span class="text-5xl">${d.logoEmoji}</span>`;
     openModal('👁️ 로그인 화면 미리보기', `<div class="bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-10 rounded-2xl"><div class="bg-white rounded-3xl p-10 max-w-md mx-auto"><div class="text-center mb-8"><div class="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-5 overflow-hidden" style="background:${d.primaryColor||'#2563eb'}">${logoDisplay}</div><h2 class="text-3xl font-black">${d.title}</h2><p class="text-slate-400 text-sm mt-2 font-medium">${d.subtitle}</p></div>${d.loginNotice?`<div class="p-4 bg-blue-50 rounded-2xl text-[11px] text-blue-700 font-bold whitespace-pre-line">${d.loginNotice}</div>`:''}${d.footerText?`<p class="text-center text-[10px] text-slate-400 font-bold mt-6">${d.footerText}</p>`:''}</div></div>`, 'max-w-2xl');
   }
+  
+  async removeLogoImage() {
+    if (!confirm('로고 이미지를 제거하시겠습니까? (이모지로 돌아갑니다)')) return;
+    showLoading(true);
+    try {
+      await store.saveSiteConfig({ ...store.siteConfig, logoImage: '' });
+      toast('이미지 제거됨', 'success');
+      await this.renderAdminTab();
+    } catch(e) {
+      toast('실패', 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
 
   
+
+
   // ===== ✨ AI 인사이트 (작동 보강) =====
   admAIInsights(c) {
     let insights;
@@ -1435,36 +1435,7 @@ class Router {
     await this.renderAdminTab();
   }
   // ===== 🎨 메인화면 관리 (사이트 설정) =====
-  admSiteConfig(c) {
-    const cfg = store.siteConfig || {};
-    c.innerHTML = `<div class="mb-6"><h2 class="text-3xl font-black">🎨 메인화면 관리</h2><p class="text-slate-500 mt-1">로고, 타이틀, 환영문구, 안내문 등을 변경할 수 있습니다 (전체 적용)</p></div>
-    <form id="cfgForm" class="space-y-5">
-      <div class="bg-white border-2 rounded-2xl p-6"><h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="image" class="w-5 h-5"></i>로고 & 브랜드</h3><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-black text-slate-400 uppercase">로고 이모지</label><input name="logoEmoji" value="${cfg.logoEmoji||'🏢'}" maxlength="2" class="w-full p-4 border-2 rounded-xl text-3xl text-center font-bold mt-1"><p class="text-[10px] text-slate-400 mt-1">예: 🏢 🏠 🏨 ✨</p></div><div><label class="text-[10px] font-black text-slate-400 uppercase">로고 텍스트</label><input name="logoText" value="${cfg.logoText||'QJ.PMS'}" class="w-full p-4 border-2 rounded-xl font-black mt-1"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">사이트 타이틀</label><input name="title" value="${cfg.title||'QJ-PropMS'}" class="w-full p-4 border-2 rounded-xl font-black mt-1"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">서브타이틀</label><input name="subtitle" value="${cfg.subtitle||'하이브리드 단기렌트 통합 관리'}" class="w-full p-4 border-2 rounded-xl font-bold mt-1"></div></div></div>
-      <div class="bg-white border-2 rounded-2xl p-6"><h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="palette" class="w-5 h-5"></i>색상 & 환영 메시지</h3><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-black text-slate-400 uppercase">메인 색상 (Primary)</label><div class="flex gap-2 mt-1"><input type="color" name="primaryColor" value="${cfg.primaryColor||'#2563eb'}" class="w-20 h-12 border-2 rounded-xl"><input type="text" id="colorHex" value="${cfg.primaryColor||'#2563eb'}" oninput="document.querySelector('[name=primaryColor]').value=this.value" class="flex-1 p-3 border-2 rounded-xl font-mono"></div></div><div><label class="text-[10px] font-black text-slate-400 uppercase">홈 환영 메시지</label><input name="welcomeMessage" value="${cfg.welcomeMessage||'안녕하세요'}" class="w-full p-4 border-2 rounded-xl font-bold mt-1"><p class="text-[10px] text-slate-400 mt-1">예: "안녕하세요" → "안녕하세요, 김성태 👋"</p></div></div></div>
-      <div class="bg-white border-2 rounded-2xl p-6"><h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="file-text" class="w-5 h-5"></i>안내 문구</h3><div><label class="text-[10px] font-black text-slate-400 uppercase">로그인 화면 안내문 (주의사항/계정 안내)</label><textarea name="loginNotice" class="w-full p-4 border-2 rounded-xl font-bold mt-1 h-32" placeholder="여러 줄 입력 가능 (줄바꿈 적용)">${cfg.loginNotice||''}</textarea></div><div class="mt-4"><label class="text-[10px] font-black text-slate-400 uppercase">푸터 텍스트</label><input name="footerText" value="${cfg.footerText||'© QJ Property Management'}" class="w-full p-4 border-2 rounded-xl font-bold mt-1"></div></div>
-      <div class="bg-white border-2 rounded-2xl p-6"><h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="message-circle" class="w-5 h-5"></i>카카오톡 연동 (선택)</h3><div><label class="text-[10px] font-black text-slate-400 uppercase">카카오톡 웹훅 URL (Make/Zapier)</label><input name="kakaoWebhook" value="${cfg.kakaoWebhook||''}" placeholder="https://hook.make.com/..." class="w-full p-4 border-2 rounded-xl font-mono text-sm mt-1"><p class="text-[10px] text-slate-400 mt-2">💡 <a href="https://www.make.com" target="_blank" class="text-blue-600 underline">Make.com</a>에서 카카오톡 자동 알림 시나리오 생성 후 웹훅 URL 입력</p></div></div>
-      <div class="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 text-xs font-bold text-blue-700">💡 변경사항은 즉시 모든 화면에 반영됩니다 (로고/타이틀/안내문 등)</div>
-      <div class="flex gap-3"><button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 변경사항 저장</button><button type="button" onclick="router.previewSiteConfig()" class="px-6 bg-blue-600 text-white py-4 rounded-xl font-black">👁️ 미리보기</button></div>
-    </form>`;
-    document.getElementById('cfgForm').onsubmit = async e => {
-      e.preventDefault();
-      const d = Object.fromEntries(new FormData(e.target));
-      showLoading(true);
-      try {
-        await store.saveSiteConfig(d);
-        toast('✅ 설정 저장됨 (전체 화면 적용)','success');
-        // 화면 다시 그리기
-        await this.renderAdmin();
-      } catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
-    };
-    lucide.createIcons();
-  }
-  
-  previewSiteConfig() {
-    const form = document.getElementById('cfgForm');
-    const d = Object.fromEntries(new FormData(form));
-    openModal('👁️ 로그인 화면 미리보기', `<div class="bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-10 rounded-2xl"><div class="bg-white rounded-3xl p-10 max-w-md mx-auto"><div class="text-center mb-8"><div class="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-5 text-5xl" style="background:${d.primaryColor||'#2563eb'}">${d.logoEmoji}</div><h2 class="text-3xl font-black">${d.title}</h2><p class="text-slate-400 text-sm mt-2 font-medium">${d.subtitle}</p></div>${d.loginNotice?`<div class="p-4 bg-blue-50 rounded-2xl text-[11px] text-blue-700 font-bold whitespace-pre-line">${d.loginNotice}</div>`:''}${d.footerText?`<p class="text-center text-[10px] text-slate-400 font-bold mt-6">${d.footerText}</p>`:''}</div></div>`, 'max-w-2xl');
-  }
+
 
   // ===== ✨ AI 인사이트 (작동 보강) =====
   admAIInsights(c) {
