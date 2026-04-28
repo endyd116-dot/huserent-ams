@@ -534,8 +534,10 @@ class Router {
       ['chats','message-square','채팅 관리'],
       ['logs','list-checks','로그 관리'],
       ['staff','calendar-days','직원 관리'],
-      ['etc','package','기타 관리']
+      ['etc','package','기타 관리'],
+      ['version','git-branch','📦 플랫폼 버전 관리']
     ];
+    
     const pending = store.pendingProfileRequests().length;
     document.getElementById('anav').innerHTML = items.map(([k,i,l])=>`<a onclick="router.adminTab='${k}';router.renderAdminNav();router.renderAdminTab()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition ${this.adminTab===k?'bg-blue-600 text-white font-black shadow-lg':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${i}" class="w-4 h-4"></i><span class="text-xs flex-1">${l}</span>${k==='profileReq'&&pending?`<span class="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">${pending}</span>`:''}</a>`).join('');
     lucide.createIcons();
@@ -549,7 +551,7 @@ class Router {
       props:this.admProps, sales:this.admSales, expenses:this.admExpenses, bookings:this.admBookings,
       stats:this.admStats, analytics:this.admAnalytics, ops:this.admOps, customers:this.admCustomers,
       users:this.admUsers, profileReq:this.admProfileReq, security:this.admSecurity, backup:this.admBackup,
-      chats:this.admChats, logs:this.admLogs, staff:this.admStaff, etc:this.admEtc
+      chats:this.admChats, logs:this.admLogs, staff:this.admStaff, etc:this.admEtc, version:this.admVersion
     }[this.adminTab];
     if (fn) fn.call(this, c);
     else c.innerHTML = UI.Empty('alert-triangle','준비 중','이 메뉴는 다음 업데이트에서 제공됩니다');
@@ -1700,6 +1702,325 @@ class Router {
     </div>
     <div class="bg-white p-6 rounded-2xl border mt-6"><h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-5 h-5"></i>📊 연도별 매출 비교</h3>${Object.keys(yearStats).length?`<div class="grid grid-cols-1 md:grid-cols-${Math.min(4,Object.keys(yearStats).length)} gap-4 mobile-stack">${Object.entries(yearStats).sort((a,b)=>a[0].localeCompare(b[0])).map(([y,s])=>`<div class="bg-gradient-to-br from-blue-500 to-blue-700 text-white p-4 rounded-xl"><p class="text-xs opacity-80 font-bold">${y}년</p><p class="text-2xl font-black mt-1">${fmt(s.rev)}</p><p class="text-xs opacity-80 mt-1">${s.count}건 예약</p></div>`).join('')}</div>`:UI.Empty('calendar','연도 데이터 없음')}</div>`;
     lucide.createIcons();
+    
+  }
+  
+  // ===== 📦 플랫폼 버전 관리 =====
+  admVersion(c) {
+    // 버전 히스토리 (전체 개발 기록)
+    const versions = [
+      {
+        v: '3.1.0',
+        date: '2026-04-28',
+        type: 'major',
+        title: '🎯 종합 업그레이드 + AI & 보안 강화',
+        author: 'QJ-PMS Team',
+        features: [
+          '✨ AI 인사이트 (8가지 자동 운영 분석)',
+          '💎 AI 스마트 가격 추천 (수요 예측 기반)',
+          '🎨 메인화면 관리 (로고/타이틀/안내문 커스터마이징)',
+          '🌙 다크 모드 토글 (전체 적용)',
+          '🔍 통합 검색 시스템 (Cmd+K)',
+          '🔔 체크인/체크아웃 자동 알림 (당일/내일)',
+          '💬 카카오톡 웹훅 연동 (Make/Zapier)',
+          '🔒 보안 설정 (세션 타임아웃/2FA/비번정책/IP추적)',
+          '💾 백업/복원 시스템 (JSON 다운/업로드)',
+          '📊 고급 분석 (히트맵/LTV/ROI/연도비교)',
+          '📄 PDF 보고서 발급',
+          '📱 모바일 햄버거 메뉴 + 반응형',
+          '🔃 카테고리 드래그앤드롭 + 인라인 수정',
+          '💳 지출 셀 클릭 인라인 편집',
+          '🏠 매물 드래그앤드롭 순서 변경',
+          '📦 플랫폼 버전 관리 (NEW)'
+        ]
+      },
+      {
+        v: '3.0.0',
+        date: '2026-04-20',
+        type: 'major',
+        title: '🚀 AI 시스템 + 모든 사용자 스케줄링',
+        author: 'QJ-PMS Team',
+        features: [
+          '✨ AI 인사이트 기능 도입 (자동 운영 추천)',
+          '💎 AI 스마트 가격 추천 (실거래 분석)',
+          '📅 모든 사용자 스케줄 직접 등록 가능',
+          '🔄 양방향 알림 동기화 (관리자↔직원)',
+          '🔔 사이드바 알림 메뉴 통합',
+          '🖼️ 매물 다중 이미지 업로드 (10MB/장)',
+          '⭐ 대표 이미지 선택 기능',
+          '📌 매물 커스텀 운영정보 (사용자 정의 항목)',
+          '👤 매니저 배정 시 자동 알림',
+          '📊 지출 엑셀 내보내기/불러오기',
+          '🗓️ 예약 과거/미래 월 자유 이동',
+          '📈 통계에서 초기투자지출 제외 옵션',
+          '🎯 고객별 메모 작성 + 최근순 정렬',
+          '📦 플랫폼 CRUD (색상 포함)',
+          '🛍️ 물품-매물 다중 연결',
+          '📊 플랫폼별 매출 통계 + 점유율 차트'
+        ]
+      },
+      {
+        v: '2.0.0',
+        date: '2026-04-15',
+        type: 'major',
+        title: '☁️ Netlify Fullstack 클라우드 전환',
+        author: 'QJ-PMS Team',
+        features: [
+          '🌐 Netlify Functions 백엔드 구축',
+          '💾 Netlify Blobs 데이터 저장소 연동',
+          '🔐 JWT 토큰 기반 인증 시스템',
+          '👥 다중 사용자 실시간 데이터 공유',
+          '🔄 LocalStorage → 클라우드 DB 전환',
+          '📡 RESTful API 설계 (data.js, auth.js)',
+          '🌱 시딩 시스템 (seed.js)',
+          '📁 모듈화 (HTML/CSS/JS 분리)',
+          '🚀 GitHub 연동 자동 배포 파이프라인',
+          '🔒 환경변수 보안 관리'
+        ]
+      },
+      {
+        v: '1.2.0',
+        date: '2026-04-10',
+        type: 'minor',
+        title: '👤 프로필 관리 + 알림 시스템 강화',
+        author: 'QJ-PMS Team',
+        features: [
+          '📝 본인 정보 수정 신청 → 관리자 승인 워크플로우',
+          '🔔 사용자별 알림 분리 (개인 알림함)',
+          '🎨 매니저 색상 태그 시스템',
+          '👤 헤더/사이드바 본인 이름 클릭 → 프로필 수정',
+          '🔄 정보 변경 요청/승인/반려 모든 단계 알림',
+          '📋 알람 전체보기 모달 (개인별)',
+          '✅ 관리자 프로필 요청 처리 화면 (승인/반려)',
+          '📊 변경 이력 시각화 (이전→이후)'
+        ]
+      },
+      {
+        v: '1.1.0',
+        date: '2026-04-05',
+        type: 'minor',
+        title: '🔗 자동 연동 + 운영관리 강화',
+        author: 'QJ-PMS Team',
+        features: [
+          '🌐 인터넷↔지출 양방향 자동 연동',
+          '📋 운영관리 25컬럼 엑셀 시트 (사진 기반)',
+          '🛍️ 물품 추천 CRUD 완전 구현',
+          '🎨 매니저 색상 태그',
+          '📦 운영 데이터 편집 폼 (전체 필드)',
+          '💰 매출 필터 강화 (그룹/매물/기간)',
+          '📈 AI 보고서 (대화내역 포함)',
+          '💳 예약 폼 디테일 (제안가 표시)'
+        ]
+      },
+      {
+        v: '1.0.0',
+        date: '2026-04-01',
+        type: 'major',
+        title: '🎉 초기 PMS 시스템 출시',
+        author: 'QJ-PMS Team',
+        features: [
+          '🔐 로그인 시스템 (Admin/Manager/Director)',
+          '🏠 매물 관리 (CRUD + 그룹화)',
+          '📅 예약 관리 + 캘린더',
+          '💬 매물별 채팅 시스템',
+          '💳 지출 관리 (대분류/소분류)',
+          '👥 이용자 권한 관리',
+          '👷 직원 스케줄링 + 알람',
+          '📊 통계 & 보고서',
+          '👨‍👩‍👧 고객 관리',
+          '📋 활동 로그',
+          '📦 인터넷/물품 추천 관리',
+          '📡 13개 관리자 메뉴 구성'
+        ]
+      }
+    ];
+
+    // 통계 계산
+    const totalFeatures = versions.reduce((s, v) => s + v.features.length, 0);
+    const majorCount = versions.filter(v => v.type === 'major').length;
+    const minorCount = versions.filter(v => v.type === 'minor').length;
+    const currentVersion = versions[0];
+    const firstVersion = versions[versions.length - 1];
+
+    c.innerHTML = `
+      <div class="mb-6">
+        <h2 class="text-3xl font-black flex items-center gap-3"><i data-lucide="git-branch" class="w-8 h-8 text-blue-600"></i>플랫폼 버전 관리</h2>
+        <p class="text-slate-500 mt-1">현재 버전 정보 및 전체 개발 히스토리</p>
+      </div>
+
+      <!-- 현재 버전 카드 -->
+      <div class="bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 text-white p-8 rounded-3xl mb-6 shadow-2xl">
+        <div class="flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <div class="flex items-center gap-3 mb-3">
+              <span class="px-3 py-1 bg-white/20 rounded-full text-xs font-black uppercase tracking-widest">현재 버전</span>
+              <span class="px-3 py-1 bg-green-500 text-white rounded-full text-xs font-black">🟢 LIVE</span>
+            </div>
+            <h3 class="text-5xl font-black tracking-tight mb-2">v${currentVersion.v}</h3>
+            <p class="text-xl font-bold opacity-90">${currentVersion.title}</p>
+            <p class="text-sm opacity-70 mt-3 font-mono">📅 배포일: ${currentVersion.date} · 👤 ${currentVersion.author}</p>
+          </div>
+          <div class="bg-white/10 backdrop-blur p-5 rounded-2xl min-w-[200px]">
+            <p class="text-[10px] font-black uppercase opacity-70 mb-2">버전 통계</p>
+            <div class="space-y-1 text-sm">
+              <div class="flex justify-between"><span class="opacity-80">총 기능:</span><b>${totalFeatures}개</b></div>
+              <div class="flex justify-between"><span class="opacity-80">메이저:</span><b>${majorCount}회</b></div>
+              <div class="flex justify-between"><span class="opacity-80">마이너:</span><b>${minorCount}회</b></div>
+              <div class="flex justify-between"><span class="opacity-80">전체 릴리즈:</span><b>${versions.length}회</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 빠른 정보 -->
+      <div class="grid grid-cols-4 gap-4 mb-6 mobile-stack">
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">최초 출시</p><p class="text-lg font-black mt-2">${firstVersion.date}</p><p class="text-xs text-slate-500 font-bold">v${firstVersion.v}</p></div>
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">최근 업데이트</p><p class="text-lg font-black mt-2">${currentVersion.date}</p><p class="text-xs text-slate-500 font-bold">v${currentVersion.v}</p></div>
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">개발 기간</p><p class="text-lg font-black mt-2">${this._calcDays(firstVersion.date, currentVersion.date)}일</p><p class="text-xs text-slate-500 font-bold">진행중 ✅</p></div>
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">GitHub 저장소</p><p class="text-lg font-black mt-2 truncate">qj-propms</p><a href="https://github.com" target="_blank" class="text-xs text-blue-600 font-bold hover:underline">저장소 보기 →</a></div>
+      </div>
+
+      <!-- 액션 버튼 -->
+      <div class="flex gap-3 mb-6 flex-wrap">
+        <button onclick="router.exportVersionHistory()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i>히스토리 내보내기</button>
+        <button onclick="router.showAddVersionModal()" class="bg-green-600 text-white px-5 py-3 rounded-xl font-black text-sm flex items-center gap-2"><i data-lucide="plus-circle" class="w-4 h-4"></i>새 버전 기록 추가</button>
+        <button onclick="router.showRoadmap()" class="bg-amber-500 text-white px-5 py-3 rounded-xl font-black text-sm flex items-center gap-2"><i data-lucide="map" class="w-4 h-4"></i>향후 로드맵</button>
+      </div>
+
+      <!-- 버전 히스토리 타임라인 -->
+      <div class="bg-white rounded-2xl border p-6">
+        <h3 class="text-xl font-black mb-6 flex items-center gap-2"><i data-lucide="history" class="w-5 h-5"></i>📜 전체 버전 히스토리 (${versions.length}개)</h3>
+        <div class="relative">
+          <div class="absolute left-6 top-2 bottom-2 w-0.5 bg-gradient-to-b from-blue-500 via-purple-500 to-pink-500"></div>
+          <div class="space-y-6">
+            ${versions.map((v, i) => {
+              const typeColor = { major: 'bg-purple-600', minor: 'bg-blue-600', patch: 'bg-green-600' }[v.type] || 'bg-slate-600';
+              const typeLabel = { major: 'MAJOR', minor: 'MINOR', patch: 'PATCH' }[v.type] || 'RELEASE';
+              const isLatest = i === 0;
+              return `
+                <div class="relative pl-16">
+                  <div class="absolute left-3 top-3 w-7 h-7 rounded-full ${typeColor} flex items-center justify-center text-white text-xs font-black shadow-lg ring-4 ring-white">${versions.length - i}</div>
+                  <div class="bg-slate-50 rounded-2xl p-5 border-2 ${isLatest ? 'border-blue-500 ring-2 ring-blue-200' : 'border-transparent'}">
+                    <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-2xl font-black">v${v.v}</span>
+                        <span class="px-2 py-1 ${typeColor} text-white rounded-lg text-[9px] font-black">${typeLabel}</span>
+                        ${isLatest ? '<span class="px-2 py-1 bg-green-500 text-white rounded-lg text-[9px] font-black animate-pulse">CURRENT</span>' : ''}
+                      </div>
+                      <span class="text-xs text-slate-400 font-mono font-bold">📅 ${v.date}</span>
+                    </div>
+                    <h4 class="text-lg font-black mb-3">${v.title}</h4>
+                    <div class="bg-white p-4 rounded-xl">
+                      <p class="text-[10px] font-black text-slate-400 uppercase mb-2">변경사항 (${v.features.length}개)</p>
+                      <ul class="space-y-1.5">
+                        ${v.features.map(f => `<li class="text-xs font-medium text-slate-700 flex items-start gap-2"><span class="text-green-500 mt-0.5">▸</span><span>${f}</span></li>`).join('')}
+                      </ul>
+                    </div>
+                    <p class="text-[10px] text-slate-400 font-bold mt-3">👤 ${v.author}</p>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- 푸터 안내 -->
+      <div class="bg-blue-50 border-2 border-blue-200 rounded-2xl p-5 mt-6">
+        <p class="text-sm font-black text-blue-700 mb-2 flex items-center gap-2"><i data-lucide="info" class="w-4 h-4"></i>💡 버전 관리 안내</p>
+        <ul class="text-xs text-blue-700 font-bold space-y-1 ml-4">
+          <li>• <b>MAJOR</b>: 큰 기능 변경 또는 아키텍처 변경 (예: v1.0 → v2.0)</li>
+          <li>• <b>MINOR</b>: 새 기능 추가 (예: v1.0 → v1.1)</li>
+          <li>• <b>PATCH</b>: 버그 수정 및 작은 개선 (예: v1.1.0 → v1.1.1)</li>
+          <li>• 새 기능 개발 시 <b>"새 버전 기록 추가"</b> 버튼으로 히스토리 등록</li>
+          <li>• Git 커밋과 별개로 <b>사용자 친화적 변경 이력</b> 관리</li>
+        </ul>
+      </div>
+    `;
+    lucide.createIcons();
+  }
+
+  _calcDays(start, end) {
+    return Math.round((new Date(end) - new Date(start)) / 86400000);
+  }
+
+  // 새 버전 추가 모달
+  showAddVersionModal() {
+    openModal('🆕 새 버전 기록 추가', `
+      <form id="addVerForm" class="space-y-4">
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs font-bold text-blue-700">💡 새로운 기능이 추가되거나 큰 변경이 있을 때 버전을 기록하세요</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-[10px] font-black text-slate-400 uppercase">버전 번호</label><input name="v" placeholder="3.2.0" class="w-full p-3 border rounded-xl font-bold mt-1 font-mono" required></div>
+          <div><label class="text-[10px] font-black text-slate-400 uppercase">유형</label><select name="type" class="w-full p-3 border rounded-xl font-bold mt-1"><option value="patch">PATCH (버그 수정)</option><option value="minor" selected>MINOR (기능 추가)</option><option value="major">MAJOR (큰 변경)</option></select></div>
+        </div>
+        <input name="title" placeholder="제목 (예: 🎯 결제 시스템 추가)" class="w-full p-3 border rounded-xl font-bold" required>
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">변경사항 (한 줄에 하나씩)</label><textarea name="features" placeholder="✨ 새 기능 1&#10;🔧 개선사항 2&#10;🐛 버그 수정 3" class="w-full p-3 border rounded-xl h-40 font-bold mt-1"></textarea></div>
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs font-bold text-amber-700">⚠️ 이 기능은 현재 메모리상에만 추가됩니다. 영구 저장하려면 추후 백엔드 연동이 필요합니다.</div>
+        <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">버전 기록 추가</button>
+      </form>
+    `, 'max-w-2xl');
+    document.getElementById('addVerForm').onsubmit = e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const features = fd.get('features').split('\n').map(s => s.trim()).filter(Boolean);
+      toast(`v${fd.get('v')} 버전 기록 등록 (${features.length}개 변경사항)`, 'success');
+      closeModal();
+      // 향후 store에 저장하려면 여기에 store.saveVersion() 호출
+    };
+  }
+
+  // 히스토리 내보내기
+  exportVersionHistory() {
+    const versions = [
+      { v: '3.1.0', date: '2026-04-28', title: '종합 업그레이드 + AI & 보안 강화' },
+      { v: '3.0.0', date: '2026-04-20', title: 'AI 시스템 + 모든 사용자 스케줄링' },
+      { v: '2.0.0', date: '2026-04-15', title: 'Netlify Fullstack 클라우드 전환' },
+      { v: '1.2.0', date: '2026-04-10', title: '프로필 관리 + 알림 시스템 강화' },
+      { v: '1.1.0', date: '2026-04-05', title: '자동 연동 + 운영관리 강화' },
+      { v: '1.0.0', date: '2026-04-01', title: '초기 PMS 시스템 출시' }
+    ];
+    const md = `# QJ-PropMS 버전 히스토리\n\n${versions.map(v => `## v${v.v} (${v.date})\n${v.title}\n`).join('\n')}`;
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `QJ-PMS-Versions-${todayStr()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('📥 버전 히스토리 다운로드 완료', 'success');
+  }
+
+  // 향후 로드맵
+  showRoadmap() {
+    openModal('🗺️ 향후 개발 로드맵', `
+      <div class="space-y-4">
+        <div class="bg-gradient-to-br from-blue-600 to-purple-600 text-white p-5 rounded-2xl">
+          <h3 class="font-black text-lg mb-2">🎯 v3.2 - 결제 & 정산 (예정)</h3>
+          <ul class="text-sm space-y-1 opacity-90">
+            <li>▸ 카드 결제 연동 (토스페이먼츠/PortOne)</li>
+            <li>▸ 자동 세금계산서 발행</li>
+            <li>▸ 정산 리포트 자동 생성</li>
+          </ul>
+        </div>
+        <div class="bg-gradient-to-br from-green-600 to-emerald-600 text-white p-5 rounded-2xl">
+          <h3 class="font-black text-lg mb-2">🌐 v3.3 - 외부 플랫폼 연동 (예정)</h3>
+          <ul class="text-sm space-y-1 opacity-90">
+            <li>▸ Airbnb iCal 동기화</li>
+            <li>▸ Booking.com 자동 가져오기</li>
+            <li>▸ 멀티 채널 매니저</li>
+          </ul>
+        </div>
+        <div class="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-5 rounded-2xl">
+          <h3 class="font-black text-lg mb-2">📱 v4.0 - 모바일 앱 (장기)</h3>
+          <ul class="text-sm space-y-1 opacity-90">
+            <li>▸ React Native 모바일 앱</li>
+            <li>▸ 푸시 알림 (FCM)</li>
+            <li>▸ 오프라인 모드</li>
+          </ul>
+        </div>
+        <div class="bg-slate-100 p-4 rounded-xl text-xs text-slate-600 font-bold">💡 로드맵은 우선순위에 따라 변경될 수 있습니다</div>
+      </div>
+    `, 'max-w-2xl');
   }
 }
 
