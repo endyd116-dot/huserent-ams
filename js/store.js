@@ -248,6 +248,39 @@ class Store {
       reader.onerror = () => reject(new Error('파일 읽기 실패'));
       reader.readAsDataURL(file);
     });
+    
+  }
+  // ===== 로고 업로드 (정사각형 자동 조정) =====
+  async uploadLogo(file) {
+    if (file.size > 5 * 1024 * 1024) throw new Error('5MB 초과');
+    if (!file.type.startsWith('image/')) throw new Error('이미지 파일이 아닙니다');
+    
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const SIZE = 200; // 로고 정사각형 크기
+          canvas.width = SIZE;
+          canvas.height = SIZE;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingQuality = 'high';
+          
+          // 정사각형으로 크롭 (중앙 기준)
+          const minSide = Math.min(img.width, img.height);
+          const sx = (img.width - minSide) / 2;
+          const sy = (img.height - minSide) / 2;
+          ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, SIZE, SIZE);
+          
+          resolve(canvas.toDataURL('image/png', 0.9));
+        } catch (e) { reject(e); }
+      };
+      img.onerror = () => reject(new Error('이미지 로드 실패'));
+      const reader = new FileReader();
+      reader.onload = e => { img.src = e.target.result; };
+      reader.onerror = () => reject(new Error('파일 읽기 실패'));
+      reader.readAsDataURL(file);
+    });
   }
   // ===== 매물 =====
   async upsertProp(d) {

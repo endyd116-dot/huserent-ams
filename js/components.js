@@ -8,7 +8,7 @@ window.UI = {
     const item = (k,icon,label,onclick,b) => `<a onclick="${onclick};router.closeMobileMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition ${active===k?'bg-blue-600 text-white font-bold shadow-xl':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${icon}" class="w-5 h-5 flex-shrink-0"></i><span class="text-sm flex-1 text-left">${label}</span>${b?`<span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full notif-badge flex-shrink-0">${b}</span>`:''}</a>`;
     return `<aside id="sidebar" class="hidden lg:flex mobile-sidebar w-72 flex-col bg-slate-900 text-white p-6 sticky top-0 h-screen">
       <div class="mb-6 px-2 cursor-pointer" onclick="router.go('home');router.closeMobileMenu()">
-        <h1 class="text-2xl font-black tracking-tighter flex items-center gap-2"><span class="text-3xl">${cfg.logoEmoji||'🏢'}</span><span>${cfg.logoText||'QJ.PMS'}</span></h1>
+        <h1 class="text-2xl font-black tracking-tighter flex items-center gap-2">${cfg.logoImage ? `<img src="${cfg.logoImage}" class="w-8 h-8 rounded-lg object-cover">` : `<span class="text-3xl">${cfg.logoEmoji||'🏢'}</span>`}<span>${cfg.logoText||'QJ.PMS'}</span></h1>
         <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">${cfg.title||'QJ-PropMS'} v3.1</p>
       </div>
       <nav class="space-y-1 flex-1 overflow-y-auto scrollbar">
