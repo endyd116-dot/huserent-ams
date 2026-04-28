@@ -1060,26 +1060,26 @@ class Router {
       <div class="bg-white border-2 rounded-2xl p-6">
         <h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="image" class="w-5 h-5"></i>로고 & 브랜드</h3>
         
-        <!-- 로고 이미지 업로드 -->
+        <!-- 🆕 로고 이미지 업로드 -->
         <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4">
-          <p class="text-xs font-black text-blue-700 uppercase mb-3">🖼️ 로고 이미지 (자동 정사각형 조정 · 5MB 이하)</p>
+          <p class="text-xs font-black text-blue-700 uppercase mb-3">🖼️ 로고 이미지 직접 업로드 (자동 정사각형 조정 · 5MB 이하)</p>
           <div class="flex items-center gap-4 flex-wrap">
             <div id="logoPreview" class="w-24 h-24 rounded-2xl bg-white border-2 border-dashed border-blue-300 flex items-center justify-center overflow-hidden flex-shrink-0">
               ${cfg.logoImage ? `<img src="${cfg.logoImage}" class="w-full h-full object-cover">` : `<span class="text-4xl">${cfg.logoEmoji||'🏢'}</span>`}
             </div>
             <div class="flex-1 min-w-[200px]">
               <input type="file" id="logoUpload" accept="image/*" class="w-full p-3 border-2 border-dashed border-blue-300 rounded-xl bg-white font-bold text-sm cursor-pointer">
-              <p class="text-[10px] text-slate-500 font-bold mt-2">💡 200x200 정사각형으로 자동 조정 · PNG/JPG 모두 지원</p>
-              ${cfg.logoImage ? `<button type="button" onclick="router.removeLogoImage()" class="mt-2 bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-black">🗑️ 이미지 제거 (이모지 사용)</button>` : ''}
+              <p class="text-[10px] text-slate-500 font-bold mt-2">💡 어떤 크기든 200x200 정사각형으로 자동 조정됩니다 · PNG/JPG 모두 지원</p>
+              ${cfg.logoImage ? `<button type="button" onclick="router.removeLogoImage()" class="mt-2 bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-black">🗑️ 이미지 제거 (이모지로 변경)</button>` : ''}
             </div>
           </div>
           <input type="hidden" name="logoImage" id="logoImageData" value="${cfg.logoImage || ''}">
         </div>
         
-        <!-- 이모지 폴백 -->
-        <details class="mb-4">
+        <!-- 이모지 폴백 (이미지 없을 때만) -->
+        <details class="mb-4 bg-slate-50 rounded-xl p-3">
           <summary class="cursor-pointer text-xs font-bold text-slate-500 hover:text-slate-700">🎭 이미지 없을 때 사용할 이모지 (선택)</summary>
-          <div class="mt-3"><input name="logoEmoji" value="${cfg.logoEmoji||'🏢'}" maxlength="2" class="w-32 p-3 border-2 rounded-xl text-2xl text-center font-bold"></div>
+          <div class="mt-3"><input name="logoEmoji" value="${cfg.logoEmoji||'🏢'}" maxlength="2" class="w-32 p-3 border-2 rounded-xl text-2xl text-center font-bold"><p class="text-[10px] text-slate-400 mt-2">예: 🏢 🏠 🏨 ✨</p></div>
         </details>
         
         <div class="grid grid-cols-2 gap-4 mobile-stack">
@@ -1099,23 +1099,26 @@ class Router {
       <div class="flex gap-3 flex-wrap"><button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 변경사항 저장</button><button type="button" onclick="router.previewSiteConfig()" class="px-6 bg-blue-600 text-white py-4 rounded-xl font-black">👁️ 미리보기</button></div>
     </form>`;
     
-    // 로고 이미지 업로드 처리
-    document.getElementById('logoUpload').onchange = async e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      showLoading(true);
-      try {
-        const dataUrl = await store.uploadLogo(file);
-        document.getElementById('logoImageData').value = dataUrl;
-        document.getElementById('logoPreview').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`;
-        toast('✅ 로고 업로드 완료 (저장 버튼을 눌러주세요)', 'success');
-      } catch(err) {
-        toast('실패: ' + err.message, 'error');
-      } finally {
-        showLoading(false);
-        e.target.value = '';
-      }
-    };
+    // 🆕 로고 이미지 업로드 처리
+    const uploadInput = document.getElementById('logoUpload');
+    if (uploadInput) {
+      uploadInput.onchange = async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        showLoading(true);
+        try {
+          const dataUrl = await store.uploadLogo(file);
+          document.getElementById('logoImageData').value = dataUrl;
+          document.getElementById('logoPreview').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`;
+          toast('✅ 로고 업로드 완료! 저장 버튼을 눌러주세요', 'success');
+        } catch(err) {
+          toast('실패: ' + err.message, 'error');
+        } finally {
+          showLoading(false);
+          e.target.value = '';
+        }
+      };
+    }
     
     document.getElementById('cfgForm').onsubmit = async e => {
       e.preventDefault();
@@ -1149,6 +1152,19 @@ class Router {
       showLoading(false);
     }
   }
+  async removeLogoImage() {
+    if (!confirm('로고 이미지를 제거하시겠습니까? (이모지로 돌아갑니다)')) return;
+    showLoading(true);
+    try {
+      await store.saveSiteConfig({ ...store.siteConfig, logoImage: '' });
+      toast('이미지 제거됨', 'success');
+      await this.renderAdminTab();
+    } catch(e) {
+      toast('실패', 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
   
   previewSiteConfig() {
     const form = document.getElementById('cfgForm');
@@ -1160,13 +1176,8 @@ class Router {
       : `<span class="text-5xl">${d.logoEmoji}</span>`;
     openModal('👁️ 로그인 화면 미리보기', `<div class="bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-10 rounded-2xl"><div class="bg-white rounded-3xl p-10 max-w-md mx-auto"><div class="text-center mb-8"><div class="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-5 overflow-hidden" style="background:${d.primaryColor||'#2563eb'}">${logoDisplay}</div><h2 class="text-3xl font-black">${d.title}</h2><p class="text-slate-400 text-sm mt-2 font-medium">${d.subtitle}</p></div>${d.loginNotice?`<div class="p-4 bg-blue-50 rounded-2xl text-[11px] text-blue-700 font-bold whitespace-pre-line">${d.loginNotice}</div>`:''}${d.footerText?`<p class="text-center text-[10px] text-slate-400 font-bold mt-6">${d.footerText}</p>`:''}</div></div>`, 'max-w-2xl');
   }
-  
-  previewSiteConfig() {
-    const form = document.getElementById('cfgForm');
-    const d = Object.fromEntries(new FormData(form));
-    openModal('👁️ 로그인 화면 미리보기', `<div class="bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-10 rounded-2xl"><div class="bg-white rounded-3xl p-10 max-w-md mx-auto"><div class="text-center mb-8"><div class="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-5 text-5xl" style="background:${d.primaryColor||'#2563eb'}">${d.logoEmoji}</div><h2 class="text-3xl font-black">${d.title}</h2><p class="text-slate-400 text-sm mt-2 font-medium">${d.subtitle}</p></div>${d.loginNotice?`<div class="p-4 bg-blue-50 rounded-2xl text-[11px] text-blue-700 font-bold whitespace-pre-line">${d.loginNotice}</div>`:''}${d.footerText?`<p class="text-center text-[10px] text-slate-400 font-bold mt-6">${d.footerText}</p>`:''}</div></div>`, 'max-w-2xl');
-  }
 
+  
   // ===== ✨ AI 인사이트 (작동 보강) =====
   admAIInsights(c) {
     let insights;
