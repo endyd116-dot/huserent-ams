@@ -5,7 +5,7 @@ window.UI = {
     const pending = isAdmin ? store.pendingProfileRequests().length : 0;
     const unread = store.getMyUnreadCount();
     const cfg = store.siteConfig || {};
-    const item = (k,icon,label,onclick,b) => `<a onclick="${onclick}" class="flex items-center gap-3 px-5 py-3.5 rounded-2xl cursor-pointer transition ${active===k?'bg-blue-600 text-white font-bold shadow-xl':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${icon}" class="w-5 h-5"></i><span class="text-sm flex-1">${label}</span>${b?`<span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full notif-badge">${b}</span>`:''}</a>`;
+    const item = (k,icon,label,onclick,b) => `<a onclick="${onclick};router.closeMobileMenu()" class="flex items-center gap-3 px-5 py-3.5 rounded-2xl cursor-pointer transition ${active===k?'bg-blue-600 text-white font-bold shadow-xl':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${icon}" class="w-5 h-5"></i><span class="text-sm flex-1">${label}</span>${b?`<span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full notif-badge">${b}</span>`:''}</a>`;
     return `<aside id="sidebar" class="hidden lg:flex mobile-sidebar w-72 flex-col bg-slate-900 text-white p-6 sticky top-0 h-screen">
       <div class="mb-8 px-2 cursor-pointer" onclick="router.go('home')">
         <h1 class="text-2xl font-black tracking-tighter flex items-center gap-2"><span class="text-3xl">${cfg.logoEmoji||'🏢'}</span>${cfg.logoText||'QJ.PMS'}</h1>

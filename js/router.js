@@ -79,6 +79,15 @@ class Router {
     sb.classList.toggle('open');
     ov.classList.toggle('open');
   }
+  
+  // 모바일에서 메뉴 클릭 시 사이드바 자동 닫힘
+  closeMobileMenu() {
+    if (window.innerWidth >= 1024) return; // 데스크탑은 무시
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('mobile-overlay');
+    if (sb) sb.classList.remove('open');
+    if (ov) ov.classList.remove('open');
+  }
 
   // ===== [신규] 통합 검색 (Cmd+K) =====
   openSearch() {
@@ -513,7 +522,7 @@ class Router {
     await this.renderAdminTab();
   }
   
-   renderAdminNav() {
+     renderAdminNav() {
     const items = [
       ['main','home','MAIN 대시보드'],
       ['siteConfig','palette','🎨 메인화면 관리'],
@@ -537,7 +546,7 @@ class Router {
       ['version','git-branch','📦 플랫폼 버전 관리']
     ];
     const pending = store.pendingProfileRequests().length;
-    document.getElementById('anav').innerHTML = items.map(([k,i,l])=>`<a onclick="router.adminTab='${k}';router.renderAdminNav();router.renderAdminTab()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition ${this.adminTab===k?'bg-blue-600 text-white font-black shadow-lg':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${i}" class="w-4 h-4"></i><span class="text-xs flex-1">${l}</span>${k==='profileReq'&&pending?`<span class="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">${pending}</span>`:''}</a>`).join('');
+    document.getElementById('anav').innerHTML = items.map(([k,i,l])=>`<a onclick="router.adminTab='${k}';router.renderAdminNav();router.renderAdminTab();router.closeMobileMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition ${this.adminTab===k?'bg-blue-600 text-white font-black shadow-lg':'text-slate-400 hover:bg-white/5 font-semibold'}"><i data-lucide="${i}" class="w-4 h-4"></i><span class="text-xs flex-1">${l}</span>${k==='profileReq'&&pending?`<span class="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">${pending}</span>`:''}</a>`).join('');
     lucide.createIcons();
   }
   
@@ -2886,7 +2895,7 @@ class Router {
     `;
     lucide.createIcons();
   }
-  
+
 }
 
 window.Router = Router;
