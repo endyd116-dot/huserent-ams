@@ -2,27 +2,61 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="QJ-PropMS - 하이브리드 단기렌트 통합 관리">
-  <title>QJ-PropMS | 단기렌트 통합 관리</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="description" content="QJ-PropMS - 하이브리드 단기렌트 통합 관리 v3.1">
+  <title>QJ-PropMS</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏢%3C/text%3E%3C/svg%3E">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: {} }
+    }
+  </script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
   <link rel="stylesheet" href="./css/styles.css">
 </head>
-<body class="bg-slate-50 text-slate-900 antialiased">
+<body class="bg-slate-50 text-slate-900 antialiased transition-colors">
   <div id="app-root"></div>
+
+  <!-- 모달 -->
   <div id="modal-root" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
     <div id="modal-content" class="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto scrollbar fade-in"></div>
   </div>
+
+  <!-- 토스트 -->
   <div id="toast-root" class="fixed top-6 right-6 z-[200] space-y-2"></div>
+
+  <!-- 로딩 -->
   <div id="loading" class="fixed inset-0 z-[300] hidden items-center justify-center bg-white/80 backdrop-blur">
     <div class="flex flex-col items-center gap-3">
       <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       <p class="text-sm font-bold text-slate-600">Loading...</p>
     </div>
   </div>
+
+  <!-- 통합 검색 (Cmd+K) -->
+  <div id="search-root" class="fixed inset-0 z-[400] hidden items-start justify-center pt-20 p-4 bg-slate-900/70 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl">
+      <div class="p-4 border-b flex items-center gap-3">
+        <i data-lucide="search" class="w-5 h-5 text-slate-400"></i>
+        <input id="search-input" placeholder="매물·고객·예약·지출 통합 검색... (ESC로 닫기)" class="flex-1 outline-none text-base font-bold">
+        <kbd class="px-2 py-1 bg-slate-100 rounded text-[10px] font-mono">ESC</kbd>
+      </div>
+      <div id="search-results" class="max-h-96 overflow-y-auto scrollbar"></div>
+    </div>
+  </div>
+
+  <!-- 카카오톡 알림 토스트 (별도) -->
+  <div id="kakao-status" class="fixed bottom-6 right-6 z-[150] hidden bg-yellow-400 text-slate-900 px-4 py-2 rounded-full text-xs font-black shadow-lg">
+    💬 카카오 알림 발송됨
+  </div>
+
   <script src="./js/utils.js"></script>
   <script src="./js/api.js"></script>
   <script src="./js/store.js"></script>

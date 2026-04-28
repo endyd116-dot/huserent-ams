@@ -7,7 +7,10 @@ class Store {
     this.majorCats = ["초기투자지출","고정지출","변동지출"];
     this.subCats = {}; this.logs = []; this.userNotifs = {};
     this.profileRequests = []; this.reportRecipients = [];
-    this.customerMemos = {};
+    this.customerMemos = {};    this.siteConfig = null;
+    this.securitySettings = null;
+    this._notifiedToday = new Set();
+    
     this.loaded = false;
   }
 
@@ -15,7 +18,7 @@ class Store {
     if (!this.currentUser) return;
     try {
       showLoading(true);
-      const cols = ['properties','bookings','expenses','chats','users','groups','platforms','internet','products','schedule','logs','profileRequests','majorCats','subCats','userNotifs','reportRecipients','opsData','customerMemos'];
+      const cols = ['properties','bookings','expenses','chats','users','groups','platforms','internet','products','schedule','logs','profileRequests','majorCats','subCats','userNotifs','reportRecipients','opsData','customerMemos','siteConfig','securitySettings'];
       const results = await Promise.all(cols.map(c => API.list(c).catch(()=>null)));
       cols.forEach((c,i) => {
         const v = results[i];
@@ -32,7 +35,35 @@ class Store {
         "고정지출":["월세","관리비","인터넷비","도시가스","전기요금"],
         "변동지출":["청소비","비품비","수선비","광고비","수수료"]
       };
-      if (!this.groups.length) this.groups = ["서울","부산","제주"];
+      if (!this.groups.length)       // 사이트 설정 기본값
+      if (!this.siteConfig || Array.isArray(this.siteConfig) && !this.siteConfig.length) {
+        this.siteConfig = {
+          title: 'QJ-PropMS',
+          subtitle: '하이브리드 단기렌트 통합 관리',
+          logoText: 'QJ.PMS',
+          logoEmoji: '🏢',
+          loginNotice: '🔑 테스트 계정 (PW: 1234)\nadmin / manager1 / manager2 / staff1',
+          footerText: '© QJ Property Management',
+          primaryColor: '#2563eb',
+          welcomeMessage: '안녕하세요',
+          kakaoWebhook: '',
+          customCss: ''
+        };
+      }
+      // 보안 설정 기본값
+      if (!this.securitySettings || Array.isArray(this.securitySettings) && !this.securitySettings.length) {
+        this.securitySettings = {
+          sessionTimeoutMin: 30,
+          require2FA: false,
+          minPasswordLength: 4,
+          passwordRequireSpecial: false,
+          ipTracking: true
+        };
+      }
+      // 다크모드 적용
+      if (localStorage.getItem('qj_dark') === '1') {
+        document.documentElement.classList.add('dark');
+      }this.groups = ["서울","부산","제주"];
       this.loaded = true;
       console.log('✅ Data loaded');
     } catch(e) { console.error('Load failed:', e); toast('데이터 로드 실패: '+e.message,'error'); }
@@ -485,5 +516,480 @@ class Store {
     };
   }
 }
+  // ===== [신규] 사이트 설정 관리 =====
+  async saveSiteConfig(cfg) {
+    this.siteConfig = { ...this.siteConfig, ...cfg };
+    await API.setAll('siteConfig', this.siteConfig);
+    await this.addLog('🎨 사이트 설정 변경됨', true);
+    // 로고/타이틀이 바뀌면 페이지 타이틀도 업데이트
+    document.title = this.siteConfig.title || 'QJ-PropMS';
+  }
 
+  async saveSecuritySettings(s) {
+    this.securitySettings = { ...this.securitySettings, ...s };
+    await API.setAll('securitySettings', this.securitySettings);
+    await this.addLog('🔒 보안 설정 변경됨', true);
+  }
+
+  // ===== [신규] 백업/복원 =====
+  async exportBackup() {
+    const data = {
+      version: '3.1',
+      exportedAt: nowTime(),
+      exportedBy: this.currentUser?.name || 'Unknown',
+      data: {
+        properties: this.properties,
+        bookings: this.bookings,
+        expenses: this.expenses,
+        users: this.users.map(u => ({...u, pw: u.id === 'admin' ? u.pw : '****'})),
+        chats: this.chats,
+        schedule: this.schedule,
+        internet: this.internet,
+        products: this.products,
+        groups: this.groups,
+        platforms: this.platforms,
+        majorCats: this.majorCats,
+        subCats: this.subCats,
+        customerMemos: this.customerMemos,
+        opsData: this.opsData,
+        siteConfig: this.siteConfig,
+        securitySettings: this.securitySettings,
+        logs: this.logs.slice(0, 200)
+      }
+    };
+    return data;
+  }
+
+  async importBackup(backupData) {
+    if (!backupData?.version || !backupData?.data) {
+      throw new Error('잘못된 백업 파일 형식입니다');
+    }
+    const d = backupData.data;
+    const collections = ['properties','bookings','expenses','chats','schedule','internet','products','groups','platforms','majorCats','subCats','customerMemos','opsData','siteConfig','securitySettings'];
+    let restored = 0;
+    for (const key of collections) {
+      if (d[key] !== undefined) {
+        this[key] = d[key];
+        await API.setAll(key, d[key]);
+        restored++;
+      }
+    }
+    // users는 비밀번호 보호되어 있으므로 복원 안함 (보안)
+    await this.addLog(`💾 백업 복원 완료 (${restored}개 컬렉션)`, true);
+    return restored;
+  }
+
+  // ===== [신규] 체크인/체크아웃 자동 알림 =====
+  async checkScheduledNotifications() {
+    if (!this.currentUser) return;
+    const today = todayStr();
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const notifKey = `qj_notif_${today}_${this.currentUser.id}`;
+    if (sessionStorage.getItem(notifKey)) return;
+
+    let count = 0;
+    // 오늘 체크인
+    for (const b of this.bookings.filter(b => b.checkIn === today)) {
+      const p = this.prop(b.propId);
+      if (!p) continue;
+      if (p.manager && p.manager === this.currentUser.id) {
+        await this.notify(p.manager, `🟢 오늘 체크인: ${b.guest}님 - ${p.name}`, 'success', { type:'detail', propId:p.id });
+        count++;
+      }
+      if (this.currentUser.role === 'Admin') {
+        await this.notify(this.currentUser.id, `🟢 오늘 체크인: ${b.guest}님 - ${p.name}`, 'success', { type:'detail', propId:p.id });
+        count++;
+      }
+    }
+    // 오늘 체크아웃
+    for (const b of this.bookings.filter(b => b.checkOut === today)) {
+      const p = this.prop(b.propId);
+      if (!p) continue;
+      if (p.manager && p.manager === this.currentUser.id) {
+        await this.notify(p.manager, `🔴 오늘 체크아웃: ${b.guest}님 - ${p.name} (청소 필요)`, 'warning', { type:'detail', propId:p.id });
+        count++;
+      }
+      if (this.currentUser.role === 'Admin') {
+        await this.notify(this.currentUser.id, `🔴 오늘 체크아웃: ${b.guest}님 - ${p.name}`, 'warning', { type:'detail', propId:p.id });
+        count++;
+      }
+    }
+    // 내일 체크인 (사전 알림)
+    for (const b of this.bookings.filter(b => b.checkIn === tomorrow)) {
+      const p = this.prop(b.propId);
+      if (!p) continue;
+      if (p.manager && p.manager === this.currentUser.id) {
+        await this.notify(p.manager, `📅 내일 체크인 예정: ${b.guest}님 - ${p.name} (사전 준비 권장)`, 'info', { type:'detail', propId:p.id });
+        count++;
+      }
+    }
+    sessionStorage.setItem(notifKey, '1');
+    if (count > 0) console.log(`✅ ${count}개의 체크인/체크아웃 알림 발송`);
+  }
+
+  // ===== [신규] 카카오톡 웹훅 =====
+  async sendKakaoNotification(message) {
+    const url = this.siteConfig?.kakaoWebhook;
+    if (!url) return false;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `[QJ-PMS]\n${message}`, source: 'QJ-PropMS' })
+      });
+      const el = document.getElementById('kakao-status');
+      if (el) {
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.add('hidden'), 2500);
+      }
+      return true;
+    } catch (e) {
+      console.error('Kakao webhook failed:', e);
+      return false;
+    }
+  }
+
+  // ===== [신규] 비밀번호 정책 검증 =====
+  validatePassword(pw) {
+    const s = this.securitySettings || { minPasswordLength: 4, passwordRequireSpecial: false };
+    const errors = [];
+    if (pw.length < s.minPasswordLength) errors.push(`최소 ${s.minPasswordLength}자 이상`);
+    if (s.passwordRequireSpecial && !/[!@#$%^&*(),.?":{}|<>]/.test(pw)) errors.push('특수문자 1개 이상 포함');
+    let strength = 0;
+    if (pw.length >= 8) strength++;
+    if (/[A-Z]/.test(pw)) strength++;
+    if (/[a-z]/.test(pw)) strength++;
+    if (/[0-9]/.test(pw)) strength++;
+    if (/[^A-Za-z0-9]/.test(pw)) strength++;
+    return {
+      valid: errors.length === 0,
+      errors,
+      strength,
+      strengthLabel: ['매우 약함','약함','보통','강함','매우 강함','최강'][strength] || '매우 약함'
+    };
+  }
+
+  // ===== [신규] 세션 타임아웃 =====
+  startSessionTimer() {
+    this.stopSessionTimer();
+    const timeoutMin = this.securitySettings?.sessionTimeoutMin || 30;
+    let lastActivity = Date.now();
+    
+    const onActivity = () => { lastActivity = Date.now(); };
+    ['click','keypress','scroll','mousemove'].forEach(evt => {
+      document.addEventListener(evt, onActivity, { passive: true });
+    });
+    this._sessionListeners = onActivity;
+    
+    this._sessionTimer = setInterval(() => {
+      const idle = (Date.now() - lastActivity) / 60000;
+      if (idle >= timeoutMin) {
+        this.stopSessionTimer();
+        toast(`⏰ ${timeoutMin}분 미사용으로 자동 로그아웃됩니다`, 'warning');
+        setTimeout(() => { router.logout(); }, 2000);
+      }
+    }, 30000); // 30초마다 체크
+  }
+  
+  stopSessionTimer() {
+    if (this._sessionTimer) clearInterval(this._sessionTimer);
+    if (this._sessionListeners) {
+      ['click','keypress','scroll','mousemove'].forEach(evt => {
+        document.removeEventListener(evt, this._sessionListeners);
+      });
+    }
+  }
+
+  // ===== [신규] IP 추적 =====
+  async logActivity(action) {
+    if (!this.securitySettings?.ipTracking) return;
+    if (!this.currentUser) return;
+    try {
+      const res = await fetch('https://api.ipify.org?format=json').catch(() => null);
+      const ip = res ? (await res.json()).ip : 'unknown';
+      const ua = navigator.userAgent.slice(0, 100);
+      await this.addLog(`🌐 ${action} (IP: ${ip})`, action.includes('실패') || action.includes('비정상'));
+    } catch {}
+  }
+
+  // ===== [신규] 카테고리 순서 이동 =====
+  async moveSubCat(majorCat, fromIdx, toIdx) {
+    const arr = this.subCats[majorCat] || [];
+    const [item] = arr.splice(fromIdx, 1);
+    arr.splice(toIdx, 0, item);
+    this.subCats[majorCat] = arr;
+    await API.setAll('subCats', this.subCats);
+  }
+  
+  async moveMajorCat(fromIdx, toIdx) {
+    const [item] = this.majorCats.splice(fromIdx, 1);
+    this.majorCats.splice(toIdx, 0, item);
+    await API.setAll('majorCats', this.majorCats);
+  }
+  
+  async renameSubCat(majorCat, idx, newName) {
+    const oldName = this.subCats[majorCat][idx];
+    this.subCats[majorCat][idx] = newName;
+    // 기존 지출 카테고리도 업데이트
+    let updated = 0;
+    for (const exp of this.expenses) {
+      if (exp.majorCat === majorCat && exp.category === oldName) {
+        exp.category = newName;
+        await API.update('expenses', exp.id, exp);
+        updated++;
+      }
+    }
+    await API.setAll('subCats', this.subCats);
+    await this.addLog(`카테고리 이름 변경: ${oldName} → ${newName} (${updated}건 동기화)`);
+  }
+
+  // ===== [신규] AI 인사이트 (작동 보강) =====
+  getAIInsights() {
+    const insights = [];
+    const today = todayStr();
+    const props = this.properties;
+    
+    if (!props.length) {
+      return [{ level:'info', icon:'info', title:'📊 데이터 분석 준비', desc:'매물을 등록하면 AI가 자동으로 운영 인사이트를 제공합니다.', action:'props' }];
+    }
+
+    // 1. 가동률 분석
+    props.forEach(p => {
+      const monthBks = this.bookings.filter(b => b.propId === p.id && b.checkIn?.slice(0,7) === today.slice(0,7));
+      const totalNights = monthBks.reduce((s, b) => {
+        try { return s + daysBetween(b.checkIn, b.checkOut); } catch { return s; }
+      }, 0);
+      const occupancy = Math.round(totalNights / 30 * 100);
+      if (occupancy < 30) {
+        insights.push({
+          level:'warning', icon:'trending-down',
+          title:`📉 ${p.name} 가동률 ${occupancy}%`,
+          desc:`이번 달 가동률이 낮습니다. AI 스마트 가격 추천 또는 광고 강화를 검토하세요.`,
+          action:'pricing', propId: p.id
+        });
+      } else if (occupancy >= 80) {
+        insights.push({
+          level:'success', icon:'trending-up',
+          title:`🔥 ${p.name} 가동률 ${occupancy}% 우수`,
+          desc:`수요가 높습니다. 가격 인상 검토 또는 유사 매물 확장 기회입니다.`,
+          action:'pricing', propId: p.id
+        });
+      }
+    });
+
+    // 2. 청소비 누적 분석
+    props.forEach(p => {
+      const cleaning = this.expenses.filter(e => e.propId === p.id && e.category === '청소비').reduce((s, e) => s + (+e.amount || 0), 0);
+      if (cleaning > 200000) {
+        insights.push({
+          level:'info', icon:'sparkles',
+          title:`🧹 ${p.name} 청소비 점검`,
+          desc:`누적 청소비 ${fmt(cleaning)}. 자체 청소 도입 시 약 30% 절감 가능합니다.`,
+          action:'expenses', propId: p.id
+        });
+      }
+    });
+
+    // 3. 인기 플랫폼
+    const platStats = {};
+    this.bookings.forEach(b => {
+      if (!platStats[b.platform]) platStats[b.platform] = { count:0, revenue:0 };
+      platStats[b.platform].count++;
+      platStats[b.platform].revenue += +b.price || 0;
+    });
+    const topPlat = Object.entries(platStats).sort((a,b) => b[1].count - a[1].count)[0];
+    if (topPlat) {
+      insights.push({
+        level:'success', icon:'trending-up',
+        title:`🏆 최고 플랫폼: ${topPlat[0]}`,
+        desc:`${topPlat[1].count}건 예약, ${fmt(topPlat[1].revenue)} 매출. 마케팅 강화를 권장합니다.`,
+        action:'customers'
+      });
+    }
+
+    // 4. 3일 내 체크인
+    const upcoming = this.bookings.filter(b => {
+      try {
+        const diff = (new Date(b.checkIn) - new Date()) / 86400000;
+        return diff >= 0 && diff <= 3;
+      } catch { return false; }
+    });
+    if (upcoming.length > 0) {
+      insights.push({
+        level:'info', icon:'calendar-clock',
+        title:`⏰ 3일 내 체크인 ${upcoming.length}건`,
+        desc:`사전 청소·준비를 진행하세요. 직원 스케줄 등록을 권장합니다.`,
+        action:'schedule'
+      });
+    }
+
+    // 5. 스마트 가격 추천
+    props.forEach(p => {
+      const recent = this.bookings.filter(b => b.propId === p.id);
+      if (recent.length >= 3) {
+        try {
+          const totalNights = recent.reduce((s, b) => s + daysBetween(b.checkIn, b.checkOut), 0);
+          if (totalNights > 0) {
+            const avgNightly = recent.reduce((s, b) => s + (+b.price||0), 0) / totalNights;
+            if (avgNightly > p.price * 1.15) {
+              insights.push({
+                level:'success', icon:'sparkles',
+                title:`💎 ${p.name} 가격 인상 가능`,
+                desc:`실거래 평균이 정가보다 ${Math.round((avgNightly/p.price-1)*100)}% 높음. 정가 조정 권장.`,
+                action:'pricing', propId: p.id
+              });
+            } else if (avgNightly < p.price * 0.85) {
+              insights.push({
+                level:'warning', icon:'trending-down',
+                title:`💰 ${p.name} 할인 빈번`,
+                desc:`실거래 평균이 정가보다 ${Math.round((1-avgNightly/p.price)*100)}% 낮음. 정가 재검토 필요.`,
+                action:'pricing', propId: p.id
+              });
+            }
+          }
+        } catch {}
+      }
+    });
+
+    // 6. 매니저 미배정
+    const noMgr = props.filter(p => !p.manager);
+    if (noMgr.length) {
+      insights.push({
+        level:'warning', icon:'user-x',
+        title:`👤 담당자 미배정 ${noMgr.length}건`,
+        desc:`${noMgr.map(p=>p.name).join(', ')}에 매니저를 배정하세요.`,
+        action:'props'
+      });
+    }
+
+    // 7. 채팅 응답 대기
+    const lastChats = {};
+    this.chats.forEach(c => {
+      if (c.role !== 'Admin' && (!lastChats[c.propId] || c.time > lastChats[c.propId].time)) {
+        lastChats[c.propId] = c;
+      }
+    });
+    Object.entries(lastChats).forEach(([pid, last]) => {
+      const reply = this.chats.filter(c => c.propId == pid && c.role === 'Admin' && c.time > last.time);
+      if (!reply.length) {
+        const p = this.prop(pid);
+        if (p) insights.push({
+          level:'info', icon:'message-circle',
+          title:`💬 ${p.name} 응답 대기`,
+          desc:`${last.sender}님 메시지에 답변이 필요합니다.`,
+          action:'chats', propId: p.id
+        });
+      }
+    });
+
+    // 8. 수익률 분석
+    const totalRev = this.bookings.reduce((s,b) => s + (+b.price||0), 0);
+    const totalCost = this.expenses.filter(e => e.majorCat !== '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
+    if (totalRev > 0) {
+      const margin = Math.round((totalRev - totalCost) / totalRev * 100);
+      if (margin < 30) {
+        insights.push({
+          level:'warning', icon:'alert-circle',
+          title:`📊 운영 마진 ${margin}%`,
+          desc:`수익률이 낮습니다. 변동지출 점검 또는 가격 정책 재검토를 권장합니다.`,
+          action:'stats'
+        });
+      } else if (margin >= 60) {
+        insights.push({
+          level:'success', icon:'award',
+          title:`🌟 운영 마진 ${margin}% 우수`,
+          desc:`수익성이 매우 좋습니다. 수익을 재투자하여 매물 확장을 검토하세요.`,
+          action:'stats'
+        });
+      }
+    }
+
+    return insights.length ? insights : [{
+      level:'success', icon:'check-circle',
+      title:'✅ 모든 운영이 정상입니다',
+      desc:'특이사항이 발견되지 않았습니다. 좋은 운영 부탁드립니다!', action:null
+    }];
+  }
+
+  // ===== [신규] AI 스마트 가격 (보강) =====
+  getSmartPricing(propId) {
+    const p = this.prop(propId);
+    if (!p) return null;
+    const bookings = this.bookings.filter(b => b.propId === propId);
+    
+    if (bookings.length === 0) {
+      return {
+        currentPrice: p.price,
+        suggested: p.price,
+        trend: 'stable',
+        confidence: 0,
+        avgNightly: p.price,
+        recentAvg: p.price,
+        weekendBoost: 0,
+        reason: '예약 데이터가 없어 분석할 수 없습니다. 마케팅을 통해 첫 예약을 유치하세요.'
+      };
+    }
+    
+    if (bookings.length < 2) {
+      return {
+        currentPrice: p.price,
+        suggested: p.price,
+        trend: 'stable',
+        confidence: 20,
+        avgNightly: bookings[0].price,
+        recentAvg: bookings[0].price,
+        weekendBoost: 0,
+        reason: '데이터 부족 (1건). 최소 3건 이상의 예약 데이터가 필요합니다.'
+      };
+    }
+    
+    try {
+      const totalNights = bookings.reduce((s,b) => s + daysBetween(b.checkIn, b.checkOut), 0) || 1;
+      const totalRev = bookings.reduce((s,b) => s + (+b.price||0), 0);
+      const avgNightly = totalRev / totalNights;
+      
+      const weekendBks = bookings.filter(b => [5,6].includes(new Date(b.checkIn).getDay()));
+      const weekdayBks = bookings.filter(b => ![5,6].includes(new Date(b.checkIn).getDay()));
+      
+      const recentBks = bookings.filter(b => {
+        const diff = (new Date() - new Date(b.checkIn)) / 86400000;
+        return diff >= -30 && diff <= 90;
+      });
+      
+      const recentAvg = recentBks.length 
+        ? recentBks.reduce((s,b) => s + (+b.price||0), 0) / Math.max(1, recentBks.reduce((s,b) => s + daysBetween(b.checkIn, b.checkOut), 0))
+        : avgNightly;
+      
+      const suggested = Math.round((p.price * 0.6 + recentAvg * 0.4) / 1000) * 1000;
+      const trend = recentAvg > p.price * 1.05 ? 'up' : recentAvg < p.price * 0.95 ? 'down' : 'stable';
+      const confidence = Math.min(95, bookings.length * 8 + recentBks.length * 5);
+      
+      const weekendAvg = weekendBks.length ? weekendBks.reduce((s,b) => s + b.price, 0) / weekendBks.length : 0;
+      const weekdayAvg = weekdayBks.length ? weekdayBks.reduce((s,b) => s + b.price, 0) / weekdayBks.length : 0;
+      const weekendBoost = (weekendAvg && weekdayAvg) ? Math.round(weekendAvg - weekdayAvg) : 0;
+      
+      const reasons = {
+        up: `📈 최근 ${recentBks.length}건 거래 평균이 정가보다 ${Math.round((recentAvg/p.price-1)*100)}% 높음. 가격 인상 추천`,
+        down: `📉 수요 감소 - 가격 인하로 가동률 회복 권장 (현재 평균 ${Math.round((1-recentAvg/p.price)*100)}% 낮음)`,
+        stable: `⚖️ 안정적 운영 중 - 현재 가격 유지 추천`
+      };
+      
+      return {
+        currentPrice: p.price,
+        suggested: Math.max(p.cost * 1.5, suggested), // 원가의 150% 미만으로는 추천 X
+        trend,
+        confidence,
+        avgNightly: Math.round(avgNightly),
+        recentAvg: Math.round(recentAvg),
+        weekendBoost,
+        bookingCount: bookings.length,
+        recentCount: recentBks.length,
+        reason: reasons[trend]
+      };
+    } catch (e) {
+      console.error('Smart pricing error:', e);
+      return null;
+    }
+  }
 window.store = new Store();

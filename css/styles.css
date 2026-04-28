@@ -2,10 +2,12 @@
 
 body { font-family: 'Pretendard', sans-serif; }
 
+/* ===== Scrollbar ===== */
 .scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
 .scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 .scrollbar::-webkit-scrollbar-track { background: transparent; }
 
+/* ===== Animations ===== */
 .fade-in { animation: fadeIn .3s ease; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -14,14 +16,270 @@ body { font-family: 'Pretendard', sans-serif; }
 
 .ring-pulse { animation: ring 2s infinite; }
 @keyframes ring {
-  0%,100% { box-shadow: 0 0 0 0 rgba(37,99,235,.4); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,.4); }
   50% { box-shadow: 0 0 0 10px rgba(37,99,235,0); }
 }
 
+.slide-up { animation: slideUp .3s ease; }
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
+
+/* ===== Calendar ===== */
 .cal-cell { min-height: 90px; transition: all .2s; }
 .cal-cell:hover { background: #eff6ff; }
 
-.ops-table td { border:1px solid #e2e8f0; padding:6px 8px; font-size:11px; }
-.ops-table th { border:1px solid #475569; padding:8px; font-size:10px; font-weight:900; text-transform:uppercase; }
+/* ===== Ops Table ===== */
+.ops-table td { border: 1px solid #e2e8f0; padding: 6px 8px; font-size: 11px; }
+.ops-table th { 
+  border: 1px solid #475569; padding: 8px; font-size: 10px; 
+  font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; 
+}
 
-.tag-mgr { display:inline-block; padding:2px 10px; border-radius:12px; font-size:10px; font-weight:900; color:white; }
+/* ===== Manager Tag ===== */
+.tag-mgr {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 900;
+  color: white;
+}
+
+/* ===== Skeleton Loader ===== */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ===== Empty State ===== */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #94a3b8;
+}
+.empty-state i {
+  width: 64px; height: 64px;
+  margin: 0 auto 16px;
+  opacity: 0.3;
+}
+.empty-state h4 {
+  font-size: 16px; font-weight: 900;
+  color: #475569;
+  margin-bottom: 8px;
+}
+.empty-state p {
+  font-size: 13px; font-weight: 500;
+}
+
+/* ===== Drag & Drop ===== */
+.sortable-ghost {
+  opacity: 0.4;
+  background: #dbeafe !important;
+}
+.sortable-chosen {
+  cursor: grabbing !important;
+}
+.drag-handle {
+  cursor: grab;
+  color: #94a3b8;
+}
+.drag-handle:hover {
+  color: #2563eb;
+}
+
+/* ===== Heatmap ===== */
+.heatmap-cell {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  color: white;
+  transition: transform 0.2s;
+}
+.heatmap-cell:hover {
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+/* ===== Cell Click (Inline Edit) ===== */
+.editable-cell {
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.editable-cell:hover {
+  background: #dbeafe !important;
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+.editable-cell::after {
+  content: '✏️';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  opacity: 0;
+  font-size: 10px;
+}
+.editable-cell:hover::after {
+  opacity: 1;
+}
+
+/* ===== Mobile Responsive ===== */
+@media (max-width: 1023px) {
+  /* 사이드바 슬라이드 */
+  aside.mobile-sidebar {
+    position: fixed !important;
+    top: 0; left: 0;
+    width: 280px !important;
+    height: 100vh !important;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    display: flex !important;
+  }
+  aside.mobile-sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .mobile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .mobile-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  
+  /* 모바일 햄버거 버튼 */
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+  
+  /* 모바일에서 그리드 강제 1열 */
+  .mobile-stack > * {
+    grid-column: span 1 !important;
+  }
+  
+  /* 테이블 스크롤 강제 */
+  table {
+    min-width: 600px;
+  }
+  
+  /* 모달 풀화면 */
+  #modal-content {
+    margin: 0;
+    border-radius: 0;
+    max-height: 100vh;
+    height: 100vh;
+  }
+  
+  /* 헤더 줄임 */
+  header { padding: 0 16px !important; }
+  
+  /* 카드 간격 줄임 */
+  .grid { gap: 12px !important; }
+}
+
+@media (min-width: 1024px) {
+  .mobile-menu-btn { display: none !important; }
+}
+
+/* ===== Dark Mode ===== */
+html.dark body {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+html.dark .bg-white { background: #1e293b !important; color: #e2e8f0; }
+html.dark .bg-slate-50 { background: #0f172a !important; }
+html.dark .bg-slate-100 { background: #334155 !important; color: #e2e8f0; }
+html.dark .border, html.dark .border-2 { border-color: #334155 !important; }
+html.dark .text-slate-900 { color: #f1f5f9 !important; }
+html.dark .text-slate-700 { color: #cbd5e1 !important; }
+html.dark .text-slate-500 { color: #94a3b8 !important; }
+html.dark .text-slate-400 { color: #64748b !important; }
+html.dark .bg-blue-50 { background: #1e3a8a !important; color: #dbeafe; }
+html.dark .bg-amber-50 { background: #78350f !important; color: #fef3c7; }
+html.dark .bg-red-50 { background: #7f1d1d !important; color: #fee2e2; }
+html.dark .bg-green-50 { background: #14532d !important; color: #dcfce7; }
+html.dark .bg-purple-50 { background: #581c87 !important; color: #f3e8ff; }
+html.dark input, html.dark select, html.dark textarea {
+  background: #334155 !important;
+  color: #e2e8f0 !important;
+  border-color: #475569 !important;
+}
+html.dark .scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+
+/* ===== Search Modal ===== */
+.search-result-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.search-result-item:hover {
+  background: #eff6ff;
+}
+.search-result-item .badge {
+  font-size: 9px;
+  font-weight: 900;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+/* ===== Print (PDF) ===== */
+@media print {
+  aside, header, .no-print { display: none !important; }
+  body { background: white !important; }
+  .print-area {
+    padding: 20mm;
+    color: black;
+  }
+}
+
+/* ===== Utility Classes ===== */
+.text-shadow-sm { text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+.bg-grid {
+  background-image: linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* ===== Notification Badge Animation ===== */
+.notif-badge {
+  animation: bounce 1s ease infinite;
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* ===== Heatmap Colors ===== */
+.heat-0 { background: #f1f5f9; color: #64748b; }
+.heat-1 { background: #bfdbfe; }
+.heat-2 { background: #60a5fa; }
+.heat-3 { background: #2563eb; }
+.heat-4 { background: #1e40af; }
+.heat-5 { background: #1e3a8a; }
