@@ -58,7 +58,13 @@ window.API = {
       body: JSON.stringify({ type, columns, sampleRows })
     });
   },
-
+  // 🆕 [v3.3] 시트의 모든 탭 자동 발견
+  async gsheetDiscover(url) {
+    return this.request('/gsheet-discover', {
+      method: 'POST',
+      body: JSON.stringify({ url })
+    });
+  },
   // 🆕 [v3.3] AI 스마트 동기화 (URL → 분석 → 변환 → 비교 통합)
   async gsheetSmart(url, existingProps, existingBookings, existingExpenses) {
     return this.request('/gsheet-smart', {
@@ -66,4 +72,5 @@ window.API = {
       body: JSON.stringify({ url, existingProps, existingBookings, existingExpenses })
     });
   }
+  
 };

@@ -4077,7 +4077,7 @@ class Router {
     };
     lucide.createIcons();
   }
-        admBackup(c) {
+    admBackup(c) {
     const savedUrl = localStorage.getItem('qj_gsheet_lastUrl') || '';
     c.innerHTML = `
       <div class="mb-6">
@@ -4112,7 +4112,7 @@ class Router {
             <h3 class="font-black text-2xl flex items-center gap-2"><i data-lucide="sparkles" class="w-7 h-7"></i>🤖 AI 스마트 동기화</h3>
             <p class="text-sm opacity-90 mt-1">URL 한 번 입력으로 AI가 자동 분석·매핑·비교까지 처리</p>
           </div>
-          <span class="bg-white/20 backdrop-blur px-3 py-1 rounded-full text-xs font-black">Gemini 2.0 Flash</span>
+          <span class="bg-white/20 backdrop-blur px-3 py-1 rounded-full text-xs font-black">Gemini 2.5 Flash</span>
         </div>
 
         <div class="bg-white/10 backdrop-blur rounded-xl p-4 mb-4">
@@ -4128,13 +4128,20 @@ class Router {
 
         <div class="space-y-3">
           <input type="text" id="gsUrl" value="${savedUrl}" placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..." class="w-full p-4 rounded-xl font-mono text-sm text-slate-900">
-          <button onclick="router.runSmartSync()" class="w-full bg-white text-purple-700 py-4 rounded-xl font-black uppercase text-base hover:shadow-2xl transition flex items-center justify-center gap-2">
-            <i data-lucide="zap" class="w-5 h-5"></i>🚀 AI 자동 동기화 시작
-          </button>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <button onclick="router.runSmartSync()" class="bg-white text-purple-700 py-4 rounded-xl font-black uppercase hover:shadow-2xl transition flex items-center justify-center gap-2">
+              <i data-lucide="zap" class="w-5 h-5"></i>현재 탭 동기화
+            </button>
+            <button onclick="router.runFullSync()" class="bg-gradient-to-r from-yellow-400 to-orange-400 text-slate-900 py-4 rounded-xl font-black uppercase hover:shadow-2xl transition flex items-center justify-center gap-2 border-2 border-white">
+              <i data-lucide="layers" class="w-5 h-5"></i>🌐 전체 시트 분석
+            </button>
+          </div>
         </div>
 
         <div class="bg-white/10 rounded-xl p-3 mt-3 text-xs opacity-90">
-          💡 <b>사전 준비</b>: Google Sheet → "공유" → "링크가 있는 모든 사용자: 뷰어"로 설정
+          💡 <b>현재 탭</b>: URL의 gid에 해당하는 1개 탭만 처리<br />
+          🌐 <b>전체 시트 분석</b>: 시트의 모든 탭을 자동 발견하여 일괄 처리
         </div>
       </div>
 
@@ -4474,6 +4481,420 @@ class Router {
     this._smartSyncResult = null;
     document.getElementById('syncResult').innerHTML = '';
     toast('취소됨', 'info');
+  }
+    // ===== [v3.3] 전체 시트 분석 (모든 탭 자동 처리) =====
+  async runFullSync() {
+    const url = document.getElementById('gsUrl').value.trim();
+    if (!url) { toast('Google Sheet URL을 입력하세요', 'error'); return; }
+
+    localStorage.setItem('qj_gsheet_lastUrl', url);
+    const resultEl = document.getElementById('syncResult');
+
+    resultEl.innerHTML = `
+      <div class="bg-white border-2 rounded-2xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          <div>
+            <p class="font-black text-lg">🌐 전체 시트 분석 중...</p>
+            <p class="text-xs text-slate-500 font-bold mt-1">모든 탭을 자동으로 발견하고 처리합니다</p>
+          </div>
+        </div>
+        <div id="fullSyncLog" class="space-y-1 text-xs font-mono bg-slate-50 p-3 rounded-xl max-h-64 overflow-y-auto"></div>
+      </div>
+    `;
+
+    const logEl = document.getElementById('fullSyncLog');
+    const addLog = (msg, color = 'slate-700') => {
+      logEl.innerHTML += `<div class="text-${color}">${msg}</div>`;
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    try {
+      // 1. 모든 탭 발견
+      addLog('🔍 시트의 모든 탭 발견 중...', 'blue-600');
+      const discovery = await API.gsheetDiscover(url);
+      
+      if (!discovery.success || !discovery.sheets?.length) {
+        throw new Error(discovery.error || '탭을 발견할 수 없습니다');
+      }
+
+      addLog(`✅ ${discovery.sheets.length}개 탭 발견 (${discovery.method})`, 'green-600');
+      discovery.sheets.forEach((s, i) => {
+        addLog(`  ${i+1}. <b>${s.name}</b> (gid=${s.gid})`, 'slate-600');
+      });
+
+      // 2. 각 탭별로 분석
+      const baseUrlMatch = url.match(/^(https:\/\/docs\.google\.com\/spreadsheets\/d\/[^/]+)/);
+      if (!baseUrlMatch) throw new Error('URL 파싱 실패');
+      const baseUrl = baseUrlMatch[1];
+
+      const tabResults = [];
+      const aggregated = { adds: [], updates: [], errors: [], stats: { addCount: 0, updateCount: 0, errorRows: 0, totalRows: 0 } };
+
+      for (let i = 0; i < discovery.sheets.length; i++) {
+        const tab = discovery.sheets[i];
+        const tabUrl = `${baseUrl}/edit?gid=${tab.gid}#gid=${tab.gid}`;
+        
+        addLog(`<br />━━━ [${i+1}/${discovery.sheets.length}] "${tab.name}" 처리 중 ━━━`, 'purple-600');
+
+        try {
+          const r = await API.gsheetSmart(
+            tabUrl,
+            store.properties || [],
+            store.bookings || [],
+            store.expenses || []
+          );
+
+          if (r.success) {
+            tabResults.push({ tab, result: r, status: 'success' });
+            aggregated.adds.push(...r.adds.map(item => ({ ...item, _sourceTab: tab.name })));
+            aggregated.updates.push(...r.updates.map(item => ({ ...item, _sourceTab: tab.name })));
+            aggregated.errors.push(...(r.errors || []).map(e => `[${tab.name}] ${e}`));
+            aggregated.stats.addCount += r.stats.addCount;
+            aggregated.stats.updateCount += r.stats.updateCount;
+            aggregated.stats.errorRows += r.stats.errorRows;
+            aggregated.stats.totalRows += r.stats.totalRows;
+            addLog(`  ✅ ${r.typeLabel}: 추가 ${r.stats.addCount} / 수정 ${r.stats.updateCount} / 동일 ${r.stats.unchangedCount}`, 'green-600');
+          } else {
+            throw new Error(r.error || '알 수 없는 오류');
+          }
+        } catch (e) {
+          tabResults.push({ tab, result: null, status: 'failed', error: e.message });
+          addLog(`  ❌ 실패: ${e.message}`, 'red-600');
+        }
+
+        // API rate limit 방지 (탭 사이 1초 대기)
+        if (i < discovery.sheets.length - 1) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+
+      addLog(`<br />━━━ 전체 분석 완료 ━━━`, 'purple-600');
+      addLog(`✅ 성공: ${tabResults.filter(t => t.status === 'success').length}개`, 'green-600');
+      addLog(`❌ 실패: ${tabResults.filter(t => t.status === 'failed').length}개`, 'red-600');
+
+      this._fullSyncResult = { tabResults, aggregated, discovery };
+      this._renderFullSyncResult();
+    } catch (e) {
+      resultEl.innerHTML = `
+        <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6">
+          <h3 class="font-black text-red-700 mb-2 flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i>❌ 전체 분석 실패</h3>
+          <p class="text-sm text-red-700 font-bold">${e.message}</p>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+  }
+
+  // ===== [v3.3] 전체 분석 결과 렌더링 =====
+  _renderFullSyncResult() {
+    const { tabResults, aggregated, discovery } = this._fullSyncResult;
+    const resultEl = document.getElementById('syncResult');
+    const successCount = tabResults.filter(t => t.status === 'success').length;
+    const failCount = tabResults.filter(t => t.status === 'failed').length;
+
+    let html = `
+      <div class="bg-white border-2 rounded-2xl p-6 mb-4">
+        <div class="flex items-center gap-3 mb-4">
+          <i data-lucide="layers" class="w-8 h-8 text-orange-500"></i>
+          <div>
+            <h3 class="font-black text-xl">🌐 전체 시트 분석 완료</h3>
+            <p class="text-xs text-slate-500 font-bold">${discovery.sheets.length}개 탭 검사 (${discovery.method})</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div class="bg-slate-50 p-3 rounded-xl text-center"><p class="text-[10px] font-black text-slate-500 uppercase">탭 수</p><p class="text-2xl font-black mt-1">${discovery.sheets.length}</p></div>
+          <div class="bg-green-50 p-3 rounded-xl text-center border-2 border-green-200"><p class="text-[10px] font-black text-green-600 uppercase">➕ 총 추가</p><p class="text-2xl font-black text-green-700 mt-1">${aggregated.stats.addCount}</p></div>
+          <div class="bg-amber-50 p-3 rounded-xl text-center border-2 border-amber-200"><p class="text-[10px] font-black text-amber-600 uppercase">✏️ 총 수정</p><p class="text-2xl font-black text-amber-700 mt-1">${aggregated.stats.updateCount}</p></div>
+          <div class="bg-red-50 p-3 rounded-xl text-center"><p class="text-[10px] font-black text-red-600 uppercase">⚠️ 오류</p><p class="text-2xl font-black text-red-700 mt-1">${aggregated.stats.errorRows}</p></div>
+        </div>
+
+        <div class="space-y-2 mb-4 max-h-96 overflow-y-auto scrollbar">
+          ${tabResults.map((t, i) => {
+            const isSuccess = t.status === 'success';
+            const r = t.result;
+            return `<div class="bg-${isSuccess?'green':'red'}-50 border-2 border-${isSuccess?'green':'red'}-200 rounded-xl p-4">
+              <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-black bg-slate-200 px-2 py-1 rounded">${i+1}</span>
+                  <p class="font-black">${t.tab.name}</p>
+                  ${isSuccess ? `<span class="text-[10px] bg-${isSuccess?'green':'red'}-200 text-${isSuccess?'green':'red'}-700 px-2 py-0.5 rounded font-black">${r.typeLabel}</span>` : ''}
+                </div>
+                ${isSuccess ? `<div class="text-xs font-bold flex gap-3">
+                  <span class="text-green-700">➕ ${r.stats.addCount}</span>
+                  <span class="text-amber-700">✏️ ${r.stats.updateCount}</span>
+                  <span class="text-slate-500">= ${r.stats.unchangedCount}</span>
+                </div>` : `<span class="text-xs text-red-700 font-bold">❌ ${t.error}</span>`}
+              </div>
+              ${isSuccess && r.reason ? `<p class="text-xs text-slate-600 font-bold mt-2 italic">💡 ${r.reason}</p>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+
+    if (aggregated.adds.length || aggregated.updates.length) {
+      html += `
+        <div class="bg-gradient-to-br from-orange-500 to-red-500 text-white p-5 rounded-2xl">
+          <p class="font-black text-lg mb-2">🚀 모든 탭 변경사항 통합 적용</p>
+          <p class="text-sm opacity-90 mb-4">총 <b>${aggregated.stats.addCount}건 추가</b> + <b>${aggregated.stats.updateCount}건 수정</b>이 일괄 적용됩니다</p>
+          <div class="flex gap-2 flex-wrap">
+            <button onclick="router.applyFullSync()" class="flex-1 bg-white text-orange-600 py-3 rounded-xl font-black uppercase hover:shadow-xl transition">✅ 전체 적용</button>
+            <button onclick="router.viewFullSyncDetails()" class="px-6 bg-white/20 text-white py-3 rounded-xl font-black uppercase">📋 상세보기</button>
+            <button onclick="router.cancelFullSync()" class="px-6 bg-white/20 text-white py-3 rounded-xl font-black uppercase">취소</button>
+          </div>
+        </div>
+      `;
+    } else {
+      html += `<div class="bg-blue-50 border-2 border-blue-200 rounded-2xl p-5 text-center">
+        <i data-lucide="check-circle" class="w-10 h-10 text-blue-500 mx-auto mb-2"></i>
+        <p class="font-black text-blue-700">✨ 모든 탭의 데이터가 이미 최신 상태입니다</p>
+      </div>`;
+    }
+
+    resultEl.innerHTML = html;
+    lucide.createIcons();
+  }
+
+  // ===== [v3.3] 전체 적용 =====
+  async applyFullSync() {
+    const r = this._fullSyncResult;
+    if (!r) return;
+    
+    const total = r.aggregated.stats.addCount + r.aggregated.stats.updateCount;
+    if (!confirm(`✅ 모든 탭의 ${total}건을 적용하시겠습니까?`)) return;
+
+    showLoading(true);
+    let totalAdded = 0, totalUpdated = 0, failed = 0;
+
+    try {
+      for (const tabResult of r.tabResults) {
+        if (tabResult.status !== 'success') continue;
+        const sub = tabResult.result;
+        if (!sub.adds?.length && !sub.updates?.length) continue;
+
+        // 추가
+        for (const item of (sub.adds || [])) {
+          try {
+            const cleaned = { ...item };
+            delete cleaned._sourceRow;
+            delete cleaned._sourceTab;
+            delete cleaned.propName;
+
+            if (sub.type === 'properties') await store.upsertProp(cleaned);
+            else if (sub.type === 'bookings') await store.addBooking(cleaned);
+            else if (sub.type === 'expenses') await store.addExpense(cleaned);
+            totalAdded++;
+          } catch (e) { console.error('Add failed:', e); failed++; }
+        }
+
+        // 수정
+        for (const item of (sub.updates || [])) {
+          try {
+            const cleaned = { ...item };
+            delete cleaned._sourceRow;
+            delete cleaned._sourceTab;
+            delete cleaned._changes;
+            delete cleaned.propName;
+
+            if (sub.type === 'properties') await store.upsertProp(cleaned);
+            else if (sub.type === 'bookings') await store.updateBooking(item.id, cleaned);
+            else if (sub.type === 'expenses') {
+              await store.delExpense(item.id);
+              await store.addExpense(cleaned);
+            }
+            totalUpdated++;
+          } catch (e) { console.error('Update failed:', e); failed++; }
+        }
+      }
+
+      await store.addLog(`🌐 전체 시트 동기화: ${totalAdded}건 추가, ${totalUpdated}건 수정${failed?`, ${failed}건 실패`:''}`, true);
+      toast(`✅ 적용 완료! 추가 ${totalAdded}건, 수정 ${totalUpdated}건${failed?`, 실패 ${failed}건`:''}`, 'success');
+      this._fullSyncResult = null;
+
+      document.getElementById('syncResult').innerHTML = `
+        <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-8 rounded-2xl text-center">
+          <i data-lucide="check-circle" class="w-16 h-16 mx-auto mb-4"></i>
+          <h3 class="text-3xl font-black mb-2">✅ 전체 동기화 완료!</h3>
+          <div class="grid grid-cols-3 gap-4 mt-6 max-w-md mx-auto">
+            <div class="bg-white/10 p-4 rounded-xl"><p class="text-xs opacity-80">추가</p><p class="text-3xl font-black">${totalAdded}</p></div>
+            <div class="bg-white/10 p-4 rounded-xl"><p class="text-xs opacity-80">수정</p><p class="text-3xl font-black">${totalUpdated}</p></div>
+            <div class="bg-white/10 p-4 rounded-xl"><p class="text-xs opacity-80">실패</p><p class="text-3xl font-black">${failed}</p></div>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    } catch (e) {
+      toast('적용 실패: ' + e.message, 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  // ===== [v3.3] 상세 보기 =====
+  viewFullSyncDetails() {
+    const { tabResults } = this._fullSyncResult;
+    const html = tabResults.filter(t => t.status === 'success' && (t.result.adds?.length || t.result.updates?.length)).map(t => {
+      const r = t.result;
+      return `<details class="bg-slate-50 rounded-xl p-3 mb-2">
+        <summary class="cursor-pointer font-black text-sm">${t.tab.name} (${r.typeLabel}) - 추가 ${r.stats.addCount}, 수정 ${r.stats.updateCount}</summary>
+        <div class="mt-3 text-xs">
+          ${r.adds.length ? `<p class="font-black text-green-700 mb-2">➕ 추가 ${r.adds.length}건</p>
+            <div class="bg-white p-2 rounded max-h-48 overflow-y-auto mb-3">
+              ${r.adds.slice(0, 10).map(item => `<div class="border-b py-1">${this._getItemTitle(item, r.type)}</div>`).join('')}
+              ${r.adds.length > 10 ? `<p class="text-slate-400 mt-2">+ ${r.adds.length - 10}건 더</p>` : ''}
+            </div>` : ''}
+          ${r.updates.length ? `<p class="font-black text-amber-700 mb-2">✏️ 수정 ${r.updates.length}건</p>
+            <div class="bg-white p-2 rounded max-h-48 overflow-y-auto">
+              ${r.updates.slice(0, 10).map(item => `<div class="border-b py-1">${this._getItemTitle(item, r.type)} <span class="text-[10px] text-slate-400">(${(item._changes||[]).length}개 필드 변경)</span></div>`).join('')}
+              ${r.updates.length > 10 ? `<p class="text-slate-400 mt-2">+ ${r.updates.length - 10}건 더</p>` : ''}
+            </div>` : ''}
+        </div>
+      </details>`;
+    }).join('');
+
+    openModal('📋 전체 시트 변경사항 상세', html || '<p class="text-center text-slate-400 py-8">변경사항이 없습니다</p>', 'max-w-4xl');
+  }
+
+  cancelFullSync() {
+    this._fullSyncResult = null;
+    document.getElementById('syncResult').innerHTML = '';
+    toast('취소됨', 'info');
+  }
+    // ===== [v3.3] 추가 항목 편집 =====
+  editAddItem(idx) {
+    const r = this._smartSyncResult;
+    if (!r || !r.adds[idx]) return;
+    const item = r.adds[idx];
+    this._showItemEditor(item, r.type, 'add', idx);
+  }
+
+  // ===== [v3.3] 추가 항목 제외 =====
+  removeAddItem(idx) {
+    const r = this._smartSyncResult;
+    if (!r || !r.adds[idx]) return;
+    if (!confirm('이 항목을 제외하시겠습니까? (실제 등록되지 않습니다)')) return;
+    r.adds.splice(idx, 1);
+    r.stats.addCount = r.adds.length;
+    toast('제외됨', 'info');
+    this._renderSmartSyncResult(r);
+  }
+
+  // ===== [v3.3] 수정 항목 편집 =====
+  editUpdateItem(idx) {
+    const r = this._smartSyncResult;
+    if (!r || !r.updates[idx]) return;
+    const item = r.updates[idx];
+    this._showItemEditor(item, r.type, 'update', idx);
+  }
+
+  // ===== [v3.3] 수정 항목 제외 =====
+  removeUpdateItem(idx) {
+    const r = this._smartSyncResult;
+    if (!r || !r.updates[idx]) return;
+    if (!confirm('이 수정사항을 적용하지 않으시겠습니까?')) return;
+    r.updates.splice(idx, 1);
+    r.stats.updateCount = r.updates.length;
+    toast('제외됨', 'info');
+    this._renderSmartSyncResult(r);
+  }
+
+  // ===== [v3.3] 항목 편집 모달 =====
+  _showItemEditor(item, type, mode, idx) {
+    const fieldDefs = {
+      properties: [
+        { key:'name', label:'숙소명', required:true, type:'text' },
+        { key:'group', label:'그룹', type:'select', options:store.groups },
+        { key:'location', label:'위치', type:'text' },
+        { key:'address', label:'주소', type:'text' },
+        { key:'price', label:'1박 가격', required:true, type:'number' },
+        { key:'cost', label:'원가', type:'number' },
+        { key:'manager', label:'담당자', type:'text' }
+      ],
+      bookings: [
+        { key:'propName', label:'숙소명', required:true, type:'text', readonly:mode==='update' },
+        { key:'guest', label:'예약자', required:true, type:'text' },
+        { key:'contact', label:'연락처', type:'text' },
+        { key:'checkIn', label:'체크인', required:true, type:'date' },
+        { key:'checkOut', label:'체크아웃', required:true, type:'date' },
+        { key:'price', label:'가격', required:true, type:'number' },
+        { key:'platform', label:'플랫폼', type:'select', options:store.platforms.map(p=>p.name) },
+        { key:'people', label:'인원', type:'number' },
+        { key:'nationality', label:'국적', type:'text' }
+      ],
+      expenses: [
+        { key:'propName', label:'숙소명', required:true, type:'text', readonly:mode==='update' },
+        { key:'date', label:'날짜', required:true, type:'date' },
+        { key:'majorCat', label:'대분류', type:'select', options:store.majorCats },
+        { key:'category', label:'소분류', required:true, type:'text' },
+        { key:'amount', label:'금액', required:true, type:'number' },
+        { key:'memo', label:'메모', type:'text' }
+      ]
+    };
+    const fields = fieldDefs[type] || [];
+    const title = mode === 'add' ? '➕ 추가 항목 편집' : '✏️ 수정 항목 편집';
+    
+    openModal(title, `
+      <form id="itemEditForm" class="space-y-3">
+        <div class="bg-blue-50 p-3 rounded-xl text-xs font-bold text-blue-700">💡 변경 후 "저장"을 누르면 적용 대기 목록에 반영됩니다</div>
+        ${fields.map(f => {
+          const val = item[f.key] || '';
+          if (f.type === 'select') {
+            return `<div>
+              <label class="text-[10px] font-black text-slate-500 uppercase">${f.label}${f.required?'*':''}</label>
+              <select name="${f.key}" class="w-full p-3 border rounded-xl font-bold mt-1" ${f.required?'required':''}>
+                <option value="">- 선택 -</option>
+                ${(f.options||[]).map(o => `<option ${val===o?'selected':''}>${o}</option>`).join('')}
+              </select>
+            </div>`;
+          }
+          return `<div>
+            <label class="text-[10px] font-black text-slate-500 uppercase">${f.label}${f.required?'*':''}${f.readonly?' (읽기전용)':''}</label>
+            <input type="${f.type}" name="${f.key}" value="${val}" class="w-full p-3 border rounded-xl font-bold mt-1" ${f.required?'required':''} ${f.readonly?'readonly':''}>
+          </div>`;
+        }).join('')}
+        <div class="flex gap-2 pt-3">
+          <button type="submit" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black uppercase">💾 저장</button>
+          <button type="button" onclick="closeModal()" class="px-6 bg-slate-200 py-3 rounded-xl font-black">취소</button>
+        </div>
+      </form>
+    `, 'max-w-xl');
+    
+    document.getElementById('itemEditForm').onsubmit = (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const newData = {};
+      fd.forEach((v, k) => { newData[k] = v; });
+      
+      // 숫자 변환
+      ['price', 'cost', 'amount', 'people'].forEach(f => {
+        if (newData[f] !== undefined) newData[f] = +newData[f] || 0;
+      });
+      
+      const r = this._smartSyncResult;
+      if (mode === 'add') {
+        // propName이 변경된 경우 propId도 다시 매칭
+        if (newData.propName && (type === 'bookings' || type === 'expenses')) {
+          const prop = store.properties.find(p => p.name === newData.propName);
+          if (!prop) {
+            toast(`매물 "${newData.propName}"이 등록되지 않았습니다`, 'error');
+            return;
+          }
+          newData.propId = prop.id;
+        }
+        r.adds[idx] = { ...r.adds[idx], ...newData };
+      } else {
+        r.updates[idx] = { ...r.updates[idx], ...newData };
+        // _changes 재계산
+        const original = r.updates[idx]._changes || [];
+        // 변경사항 단순 표시 (필드별 before/after는 유지)
+      }
+      
+      toast('저장됨 (적용하기 누르면 DB 반영)', 'success');
+      closeModal();
+      this._renderSmartSyncResult(r);
+    };
   }
     // ===== [v3.2] Google Sheets URL 파서 =====
   _parseGSheetUrl(url) {
