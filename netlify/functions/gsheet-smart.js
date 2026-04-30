@@ -106,6 +106,7 @@ function buildCsvUrl(url) {
 }
 
 // ===== 2단계: AI 분석 (타입 판별 + 컬럼 매핑) =====
+// ===== 2단계: AI 분석 (타입 판별 + 컬럼 매핑) - 재시도 + 모델 폴백 =====
 async function aiAnalyze(columns, sampleRows, existingPropNames) {
   const schemaDesc = Object.entries(PLATFORM_SCHEMA).map(([k, v]) => {
     const fieldsDesc = Object.entries(v.fields).map(([fk, fv]) => 
@@ -148,25 +149,69 @@ ${JSON.stringify(sampleRows, null, 2)}
   }
 }`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
-    })
-  });
+  // 폴백 모델 순서 (한도 초과 시 자동으로 다음 모델 시도)
+  const models = [
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-8b',
+    'gemini-2.0-flash'
+  ];
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini API 오류 ${res.status}: ${errText.slice(0, 200)}`);
+  let lastError = null;
+
+  for (const model of models) {
+    // 각 모델당 최대 3회 재시도 (지수 백오프)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { 
+              temperature: 0.1, 
+              responseMimeType: "application/json",
+              maxOutputTokens: 2048
+            }
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!text) throw new Error("AI 응답이 비어있습니다");
+          console.log(`✅ AI 분석 성공: ${model} (시도 ${attempt+1}회)`);
+          return JSON.parse(text);
+        }
+
+        const errText = await res.text();
+        lastError = `${model} (${res.status}): ${errText.slice(0, 200)}`;
+
+        // 429 (quota) 또는 503 (overload)이면 다음 모델로
+        if (res.status === 429 || res.status === 503) {
+          // 짧은 대기 후 재시도 (1초, 2초, 4초)
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+            continue;
+          }
+          // 모델 폴백
+          break;
+        }
+
+        // 다른 오류는 즉시 다음 모델로
+        break;
+      } catch (e) {
+        lastError = `${model}: ${e.message}`;
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        }
+      }
+    }
   }
 
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("AI 응답이 비어있습니다");
-  return JSON.parse(text);
+  // 모든 모델 실패
+  throw new Error(`모든 AI 모델 한도 초과 또는 오류 발생.\n${lastError}\n\n💡 해결 방법:\n1. 5-10분 후 재시도\n2. https://aistudio.google.com 에서 quota 확인\n3. 결제 정보 등록 (무료 한도 ↑)`);
 }
 
 // 날짜 정규화
