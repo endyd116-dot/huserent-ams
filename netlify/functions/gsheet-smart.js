@@ -130,7 +130,6 @@ function parseCSV(text) {
 }
 
 async function aiAnalyze(columns, sampleRows, existingPropNames) {
-  // ---------- 1) 스키마 설명 생성 ----------
   const schemaDesc = Object.entries(PLATFORM_SCHEMA).map(([k, v]) => {
     const fieldsDesc = Object.entries(v.fields).map(([fk, fv]) => {
       const required = fv.required ? '*' : '';
@@ -140,89 +139,94 @@ async function aiAnalyze(columns, sampleRows, existingPropNames) {
     return `${k} - ${v.label}: ${v.description}\n  필드:\n${fieldsDesc}`;
   }).join('\n\n');
 
-  // ---------- 2) 프롬프트 분할 조립 ----------
-  const promptHeader = '당신은 부동산 관리 시스템(QJ-PMS)의 데이터 통합 AI입니다.\n\n'
-    + '【플랫폼 데이터 구조】\n'
-    + schemaDesc
-    + '\n\n【기존 매물 목록】\n'
-    + (existingPropNames.slice(0, 50).join(', ') || '(아직 매물 없음)');
+  const prompt = '당신은 부동산 관리 시스템(QJ-PMS)의 데이터 통합 AI입니다.\n\n'
+    + '【플랫폼 데이터 구조】\n' + schemaDesc
+    + '\n\n【기존 매물 목록】\n' + (existingPropNames.slice(0, 50).join(', ') || '(아직 매물 없음)')
+    + '\n\n【분석 대상 시트】\n'
+    + `컬럼 (${columns.length}개):\n` + columns.map((c, i) => `${i + 1}. "${c}"`).join('\n')
+    + '\n\n샘플 데이터:\n' + JSON.stringify(sampleRows, null, 2)
+    + '\n\n【지시사항】\n1. properties/bookings/expenses 중 적합한 타입 선택\n2. 컬럼명+샘플 분석\n3. 매칭불가는 null\n4. 신뢰도(high/medium/low)\n5. JSON으로만 답변'
+    + '\n\n【응답 형식】\n{"detectedType":"...","confidence":"...","reason":"...","mapping":{}}';
 
-  const promptSheet = '\n\n【분석 대상 시트】\n'
-    + `컬럼 (${columns.length}개):\n`
-    + columns.map((c, i) => `${i + 1}. "${c}"`).join('\n')
-    + '\n\n샘플 데이터 (처음 3행):\n'
-    + JSON.stringify(sampleRows, null, 2);
+  // 🆕 다중 모델 + 재시도 로직
+  const models = [
+    { name: 'gemini-2.5-flash', timeout: 18000 },
+    { name: 'gemini-flash-latest', timeout: 12000 },
+    { name: 'gemini-2.0-flash-exp', timeout: 8000 }
+  ];
 
-  const promptInstructions = '\n\n【지시사항】\n'
-    + '1. 시트 데이터 성격을 분석해 properties/bookings/expenses 중 가장 적합한 타입 선택\n'
-    + '2. 컬럼명과 샘플 데이터 모두 분석하여 시스템 필드와 매칭\n'
-    + '3. 매칭 불가능한 필드는 null\n'
-    + '4. 신뢰도(high/medium/low) 평가\n'
-    + '5. 반드시 JSON으로만 답변';
+  let lastError = null;
 
-  const promptFormat = '\n\n【응답 형식】\n'
-    + '{\n'
-    + '  "detectedType": "properties|bookings|expenses",\n'
-    + '  "confidence": "high|medium|low",\n'
-    + '  "reason": "한국어 분석 근거 한 문장",\n'
-    + '  "mapping": {\n'
-    + '    "필드명": "컬럼명 또는 null"\n'
-    + '  }\n'
-    + '}';
+  for (const { name, timeout } of models) {
+    // 모델당 최대 3회 재시도
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`🤖 ${name} 시도 ${attempt}/3 (timeout: ${timeout}ms)`);
+        const startTime = Date.now();
 
-  const prompt = promptHeader + promptSheet + promptInstructions + promptFormat;
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + name + ':generateContent?key=' + GEMINI_API_KEY;
 
-  // ---------- 3) 단일 모델 + 충분한 타임아웃 (22초) ----------
-  const modelName = 'gemini-2.5-flash';
-  const timeout = 22000; // 18초 → 22초로 증가
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  console.log(`🤖 AI 분석 시작: ${modelName} (timeout: ${timeout}ms)`);
-  const startTime = Date.now();
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.1,
+              responseMimeType: "application/json",
+              maxOutputTokens: 2048
+            }
+          }),
+          signal: controller.signal
+        });
 
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-    + modelName
-    + ':generateContent?key='
-    + GEMINI_API_KEY;
+        clearTimeout(timeoutId);
+        const elapsed = Date.now() - startTime;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-          maxOutputTokens: 2048
+        if (res.ok) {
+          const data = await res.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!text) throw new Error("AI 응답이 비어있습니다");
+          console.log(`✅ ${name} 성공 (${elapsed}ms, 시도 ${attempt})`);
+          return JSON.parse(text);
         }
-      }),
-      signal: controller.signal
-    });
 
-    clearTimeout(timeoutId);
-    const elapsed = Date.now() - startTime;
+        const errText = await res.text();
+        const is503 = res.status === 503;
+        const is429 = res.status === 429;
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`AI 응답 오류 (${res.status}): ${errText.slice(0, 200)}`);
+        if ((is503 || is429) && attempt < 3) {
+          // 503/429는 재시도 (지수 백오프: 1초, 3초)
+          const waitMs = attempt * 1500;
+          console.warn(`⚠️ ${name} ${res.status} - ${waitMs}ms 후 재시도 (${attempt}/3)`);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+
+        lastError = `${name} (${res.status}): ${errText.slice(0, 150)}`;
+        console.warn(`⚠️ ${lastError}`);
+        break; // 다음 모델로
+      } catch (e) {
+        const errMsg = e.name === 'AbortError' ? `타임아웃 (${timeout}ms)` : e.message;
+        lastError = `${name}: ${errMsg}`;
+        console.warn(`⚠️ ${lastError}`);
+        if (attempt < 3 && e.name !== 'AbortError') {
+          await new Promise(r => setTimeout(r, attempt * 1000));
+          continue;
+        }
+        break;
+      }
     }
-
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("AI 응답이 비어있습니다");
-
-    console.log(`✅ AI 분석 성공: ${modelName} (${elapsed}ms)`);
-    return JSON.parse(text);
-  } catch (e) {
-    clearTimeout(timeoutId);
-    const errMsg = e.name === 'AbortError'
-      ? `타임아웃 (${timeout/1000}초 초과) - 시트가 너무 크거나 AI 서버가 느립니다. 잠시 후 다시 시도해주세요`
-      : e.message;
-    throw new Error(`AI 분석 실패: ${errMsg}`);
   }
+
+  // 모든 모델/시도 실패
+  const userMsg = lastError?.includes('503') 
+    ? 'Google AI 서버가 일시적으로 과부하 상태입니다. 30초~1분 후 다시 시도해주세요.'
+    : `AI 분석 실패: ${lastError}`;
+  throw new Error(userMsg);
 }
 function normalizeDate(s) {
   if (!s) return '';
