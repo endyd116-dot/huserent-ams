@@ -150,11 +150,11 @@ ${JSON.stringify(sampleRows, null, 2)}
 }`;
 
   // 폴백 모델 순서 (한도 초과 시 자동으로 다음 모델 시도)
-  const models = [
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-8b',
-    'gemini-2.0-flash'
+    const models = [
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-pro'
   ];
 
   let lastError = null;
