@@ -84,7 +84,13 @@ class Store {
           ipTracking: true
         };
       }
-      
+      // 🆕 추가: localStorage에 캐싱 (로그인 화면에서 즉시 사용)
+      try {
+      if (this.siteConfig && typeof this.siteConfig === 'object') 
+        {localStorage.setItem('qj_siteConfig', JSON.stringify(this.siteConfig));
+        }
+          } catch (e) {}
+
       // 다크모드 적용
       if (localStorage.getItem('qj_dark') === '1') {
         document.documentElement.classList.add('dark');
@@ -557,12 +563,55 @@ class Store {
     await API.setAll('customerMemos', this.customerMemos).catch(()=>{});
   }
   // ===== [v3.1] 사이트 설정 =====
-  async saveSiteConfig(cfg) {
+  // ===== [v3.1] 사이트 설정 =====
+   async saveSiteConfig(cfg) {
     this.siteConfig = { ...this.siteConfig, ...cfg };
     await API.setAll('siteConfig', this.siteConfig);
+  
+  // 🆕 추가: localStorage 동기화
+    try {
+      localStorage.setItem('qj_siteConfig', JSON.stringify(this.siteConfig));
+    } catch (e) {}
+  
     await this.addLog('🎨 사이트 설정 변경', true);
     document.title = this.siteConfig.title || 'QJ-PropMS';
+     }
+     // ===== 🆕 [v3.1.1] 로그인 화면 즉시 커스터마이징 =====
+loadCachedSiteConfig() {
+  try {
+    const cached = localStorage.getItem('qj_siteConfig');
+    if (cached) {
+      const cfg = JSON.parse(cached);
+      if (cfg && typeof cfg === 'object') {
+        this.siteConfig = cfg;
+        if (cfg.title) document.title = cfg.title;
+        return true;
+      }
+    }
+  } catch (e) {
+    console.warn('Cache load failed:', e);
   }
+  return false;
+}
+
+async fetchPublicSiteConfig() {
+  try {
+    const cfg = await API.publicGet('siteConfig');
+    if (cfg && typeof cfg === 'object' && !Array.isArray(cfg) && Object.keys(cfg).length > 0) {
+      const changed = JSON.stringify(this.siteConfig) !== JSON.stringify(cfg);
+      this.siteConfig = cfg;
+      try {
+        localStorage.setItem('qj_siteConfig', JSON.stringify(cfg));
+      } catch (e) {}
+      if (cfg.title) document.title = cfg.title;
+      return changed;
+    }
+  } catch (e) {
+    console.warn('Public config fetch failed:', e);
+  }
+  return false;
+}
+
 
   async saveSecuritySettings(s) {
     this.securitySettings = { ...this.securitySettings, ...s };

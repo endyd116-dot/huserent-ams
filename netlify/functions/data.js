@@ -8,6 +8,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS"
 };
 
+// 🆕 인증 없이 GET 허용 컬렉션 (로그인 화면 커스터마이징용)
+const PUBLIC_GET_COLLECTIONS = ['siteConfig'];
+
 function verifyToken(authHeader) {
   if (!authHeader?.startsWith("Bearer ")) return null;
   try { return jwt.verify(authHeader.substring(7), JWT_SECRET); }
@@ -29,9 +32,16 @@ export default async (req) => {
   const id = url.searchParams.get("id");
   const isBulk = url.searchParams.get("bulk") === "1";
 
-  const auth = req.headers.get("authorization");
-  const user = verifyToken(auth);
-  if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
+  // 🆕 공개 GET 여부 판단
+  const isPublicGet = req.method === "GET" && PUBLIC_GET_COLLECTIONS.includes(collection);
+
+  // 공개 GET이 아니면 JWT 검증
+  if (!isPublicGet) {
+    const auth = req.headers.get("authorization");
+    const user = verifyToken(auth);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
+  }
+
   if (!collection) return jsonResponse({ error: "collection required" }, 400);
 
   const store = getStore({ name: "qj-pms-data", consistency: "strong" });
@@ -42,7 +52,7 @@ export default async (req) => {
       if (id && Array.isArray(data)) {
         return jsonResponse(data.find(x => String(x.id) === String(id)) || null);
       }
-      return jsonResponse(data || []);
+      return jsonResponse(data || (isPublicGet ? {} : []));
     }
 
     if (req.method === "POST") {

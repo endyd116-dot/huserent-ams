@@ -28,6 +28,18 @@ window.API = {
     }
   },
 
+  // 🆕 인증 없이 공개 GET (로그인 화면 커스터마이징용)
+  async publicGet(collection) {
+    try {
+      const res = await fetch(`${this.baseURL}/data?collection=${collection}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn(`[API public ${collection}]`, e);
+      return null;
+    }
+  },
+
   async login(id, pw) {
     const res = await this.request('/auth', { method:'POST', body: JSON.stringify({id, pw}) });
     this.setToken(res.token);
