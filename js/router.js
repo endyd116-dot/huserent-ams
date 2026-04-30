@@ -448,106 +448,199 @@ class Router {
     openModal(`ℹ️ ${p.name}`, `${main?`<img src="${main}" id="mainPropImg" class="w-full h-72 object-cover rounded-2xl mb-4">`:''}${images.length>1?`<div class="flex gap-2 mb-6 overflow-x-auto pb-2">${images.map((img,i)=>`<img src="${img}" class="w-24 h-20 object-cover rounded-lg cursor-pointer flex-shrink-0 ${i===mainIdx?'ring-2 ring-blue-500':''}" onclick="document.getElementById('mainPropImg').src='${img}'">`).join('')}</div>`:'<div class="mb-6"></div>'}<p class="text-sm bg-slate-50 p-6 rounded-2xl mb-6">${p.description||'-'}</p><div class="grid grid-cols-2 gap-3 text-sm mb-4">${[['그룹',p.group],['주소',p.address],['1박',fmt(p.price)],['원가',fmt(p.cost)],['담당',mgr?.name||'-'],['수리',p.repair],['청소',p.cleaning],['가스',p.gas],['인터넷',p.internet],['분리수거',p.recycleDay],['비밀번호',p.password],['관리실',p.office]].map(([k,v])=>`<div class="bg-white p-4 rounded-xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${k}</p><p class="font-bold mt-1">${v||'-'}</p></div>`).join('')}</div>${p.customFields&&p.customFields.length?`<div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4"><p class="text-xs font-black text-amber-700 uppercase mb-3">📌 추가 운영 정보</p><div class="grid grid-cols-2 gap-2 text-sm">${p.customFields.map(cf=>`<div class="bg-white p-3 rounded-lg"><p class="text-[10px] font-black text-amber-600 uppercase">${cf.label}</p><p class="font-bold mt-1">${cf.value||'-'}</p></div>`).join('')}</div></div>`:''}`, 'max-w-4xl');
   }
 
-    showChatBox(propId) {
-    const p = store.prop(propId);
-    const chats = store.chats.filter(c => c.propId === propId);
-    const url = `${location.origin}${location.pathname}#chat/${propId}`;
-    
-    openModal(`💬 ${p.name}`, `
-      <div class="bg-blue-50 p-3 rounded-xl mb-4 flex items-center gap-2 text-xs">
-        <i data-lucide="link" class="w-4 h-4 text-blue-600"></i>
-        <code class="flex-1 font-mono text-blue-700 truncate">${url}</code>
-        <button onclick="navigator.clipboard.writeText('${url}');toast('복사','success')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold flex-shrink-0">복사</button>
-      </div>
-      <div id="cb" class="h-96 overflow-y-auto scrollbar bg-slate-50 rounded-2xl p-4 space-y-4 mb-4">
-        ${chats.length ? chats.map((c, i) => {
-          const isAdmin = c.role === 'Admin';
-          const isMgr = c.role === 'Manager';
-          const align = isAdmin ? 'items-end' : 'items-start';
-          const bg = isAdmin ? 'bg-slate-900 text-white' : isMgr ? 'bg-blue-500 text-white' : 'bg-white border';
-          const hasImage = c.image;
-          const hasText = c.message && c.message.trim();
-          return `<div class="flex flex-col ${align}">
-            <p class="text-[9px] font-black text-slate-400 mb-1">${c.sender} · ${c.time}</p>
-            ${hasImage ? `
-              <div class="max-w-[75%] mb-1 group relative">
-                <img src="${c.image}" class="rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition" onclick="router.viewChatImage('${c.image}', '${c.sender}_${c.time}')">
-                <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                  <button onclick="router.downloadChatImage('${c.image}', '${c.sender}_${c.time}')" class="w-8 h-8 bg-white/90 hover:bg-white rounded-lg flex items-center justify-center shadow" title="다운로드">
-                    <i data-lucide="download" class="w-4 h-4 text-slate-700"></i>
-                  </button>
-                  <button onclick="router.shareChatImage('${c.image}', '${c.sender}_${c.time}')" class="w-8 h-8 bg-white/90 hover:bg-white rounded-lg flex items-center justify-center shadow" title="공유">
-                    <i data-lucide="share-2" class="w-4 h-4 text-slate-700"></i>
-                  </button>
-                </div>
+    async showChatBox(propId) {
+  const p = store.prop(propId);
+  if (!p) { toast('매물을 찾을 수 없습니다','error'); return; }
+  
+  // 🆕 [수정 1] 채팅 데이터 자동 새로고침 (사진이 늦게 보이는 문제 해결)
+  try {
+    const latestChats = await API.list('chats');
+    if (Array.isArray(latestChats)) {
+      store.chats = latestChats;
+    }
+  } catch(e) {
+    console.warn('채팅 동기화 실패:', e);
+  }
+  
+  const chats = store.chats.filter(c => c.propId === propId);
+  const url = `${location.origin}${location.pathname}#chat/${propId}`;
+  
+  openModal(`💬 ${p.name}`, `
+    <div class="bg-blue-50 p-3 rounded-xl mb-4 flex items-center gap-2 text-xs">
+      <i data-lucide="link" class="w-4 h-4 text-blue-600"></i>
+      <code class="flex-1 font-mono text-blue-700 truncate">${url}</code>
+      <button onclick="navigator.clipboard.writeText('${url}');toast('복사','success')" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold flex-shrink-0">복사</button>
+    </div>
+    <div id="cb" class="h-96 overflow-y-auto scrollbar bg-slate-50 rounded-2xl p-4 space-y-4 mb-4">
+      ${chats.length ? chats.map((c, i) => {
+        const isAdmin = c.role === 'Admin';
+        const isMgr = c.role === 'Manager';
+        const align = isAdmin ? 'items-end' : 'items-start';
+        const bg = isAdmin ? 'bg-slate-900 text-white' : isMgr ? 'bg-blue-500 text-white' : 'bg-white border';
+        const hasImage = c.image;
+        const hasText = c.message && c.message.trim();
+        return `<div class="flex flex-col ${align}">
+          <p class="text-[9px] font-black text-slate-400 mb-1">${c.sender} · ${c.time}</p>
+          ${hasImage ? `
+            <div class="max-w-[75%] mb-1 group relative">
+              <img src="${c.image}" class="rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition" onclick="router.viewChatImage('${c.image}', '${c.sender}_${c.time}')">
+              <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                <button onclick="router.downloadChatImage('${c.image}', '${c.sender}_${c.time}')" class="w-8 h-8 bg-white/90 hover:bg-white rounded-lg flex items-center justify-center shadow" title="다운로드">
+                  <i data-lucide="download" class="w-4 h-4 text-slate-700"></i>
+                </button>
+                <button onclick="router.shareChatImage('${c.image}', '${c.sender}_${c.time}')" class="w-8 h-8 bg-white/90 hover:bg-white rounded-lg flex items-center justify-center shadow" title="공유">
+                  <i data-lucide="share-2" class="w-4 h-4 text-slate-700"></i>
+                </button>
               </div>
-            ` : ''}
-            ${hasText ? `<div class="max-w-[75%] p-3 rounded-2xl text-sm font-medium ${bg}">${c.message}</div>` : ''}
-          </div>`;
-        }).join('') : '<p class="text-center text-slate-400 py-16">대화 없음</p>'}
+            </div>
+          ` : ''}
+          ${hasText ? `<div class="max-w-[75%] p-3 rounded-2xl text-sm font-medium ${bg}">${c.message}</div>` : ''}
+        </div>`;
+      }).join('') : '<p class="text-center text-slate-400 py-16">대화 없음</p>'}
+    </div>
+    
+    <div id="imgPreviewArea" class="hidden mb-3 p-3 bg-blue-50 rounded-xl">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-xs font-black text-blue-700">📷 첨부할 이미지</p>
+        <button onclick="router.cancelChatImage()" class="text-red-500 text-xs font-black">✕ 취소</button>
       </div>
-      
-      <div id="imgPreviewArea" class="hidden mb-3 p-3 bg-blue-50 rounded-xl">
-        <div class="flex items-center justify-between mb-2">
-          <p class="text-xs font-black text-blue-700">📷 첨부할 이미지</p>
-          <button onclick="router.cancelChatImage()" class="text-red-500 text-xs font-black">✕ 취소</button>
-        </div>
-        <img id="chatImgPreview" class="max-h-32 rounded-lg">
-      </div>
-      
-      <form id="cf" class="flex gap-2">
-        <label class="px-3 py-3 bg-slate-100 hover:bg-blue-100 rounded-xl cursor-pointer flex items-center justify-center" title="사진 첨부">
-          <i data-lucide="image" class="w-5 h-5 text-slate-600"></i>
-          <input type="file" id="chatImgInput" accept="image/*" class="hidden">
-        </label>
-        <input id="ci" class="flex-1 px-4 py-3 bg-slate-100 rounded-xl outline-none font-bold text-sm" placeholder="메시지 또는 사진...">
-        <button class="px-5 bg-blue-600 text-white rounded-xl font-black"><i data-lucide="send" class="w-4 h-4"></i></button>
-      </form>
-    `, 'max-w-3xl');
+      <img id="chatImgPreview" class="max-h-32 rounded-lg">
+    </div>
     
-    document.getElementById('cb').scrollTop = 999999;
-    this._chatPendingImage = null;
+    <form id="cf" class="flex gap-2">
+      <label class="px-3 py-3 bg-slate-100 hover:bg-blue-100 rounded-xl cursor-pointer flex items-center justify-center" title="사진 첨부">
+        <i data-lucide="image" class="w-5 h-5 text-slate-600"></i>
+        <input type="file" id="chatImgInput" accept="image/*" class="hidden">
+      </label>
+      <input id="ci" class="flex-1 px-4 py-3 bg-slate-100 rounded-xl outline-none font-bold text-sm" placeholder="메시지 또는 사진..." autocomplete="off">
+      <button id="sendBtn" type="submit" class="px-5 bg-blue-600 text-white rounded-xl font-black"><i data-lucide="send" class="w-4 h-4"></i></button>
+    </form>
+  `, 'max-w-3xl');
+  
+  document.getElementById('cb').scrollTop = 999999;
+  this._chatPendingImage = null;
+  
+  // 🆕 [수정 2] 이미지 선택 핸들러 - 전체 로딩 제거 (버튼만 비활성화)
+  document.getElementById('chatImgInput').onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
     
-    // 이미지 선택 핸들러
-    document.getElementById('chatImgInput').onchange = async e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      showLoading(true);
-      try {
-        const dataUrl = await store.uploadChatImage(file);
-        this._chatPendingImage = dataUrl;
-        document.getElementById('chatImgPreview').src = dataUrl;
-        document.getElementById('imgPreviewArea').classList.remove('hidden');
-        toast('이미지 첨부됨','success');
-      } catch(err) {
-        toast('실패: ' + err.message, 'error');
-      } finally {
-        showLoading(false);
-        e.target.value = '';
+    const sendBtn = document.getElementById('sendBtn');
+    if (sendBtn) sendBtn.disabled = true;
+    
+    try {
+      const dataUrl = await store.uploadChatImage(file);
+      this._chatPendingImage = dataUrl;
+      document.getElementById('chatImgPreview').src = dataUrl;
+      document.getElementById('imgPreviewArea').classList.remove('hidden');
+      toast('이미지 첨부됨','success');
+    } catch(err) {
+      toast('실패: ' + err.message, 'error');
+    } finally {
+      if (sendBtn) sendBtn.disabled = false;
+      e.target.value = '';
+    }
+  };
+  
+  // 🆕 [수정 3] 메시지 전송 - 전체 로딩 제거 → 버튼 스피너로 대체 (입력창 안 막힘)
+  document.getElementById('cf').onsubmit = async e => {
+    e.preventDefault();
+    const i = document.getElementById('ci');
+    const msg = i.value.trim();
+    const img = this._chatPendingImage;
+    if (!msg && !img) return;
+    
+    const sendBtn = document.getElementById('sendBtn');
+    const originalHTML = sendBtn ? sendBtn.innerHTML : '';
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin"></i>';
+      lucide.createIcons();
+    }
+    
+    try {
+      await store.addChat(propId, msg, img);
+      this._chatPendingImage = null;
+      this.showChatBox(propId);
+    } catch(err) {
+      toast('전송 실패: ' + err.message, 'error');
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = originalHTML;
+        lucide.createIcons();
       }
-    };
+    }
+  };
+  
+  lucide.createIcons();
+}
+  
+  // ✅ [NEW] 채팅 목록 부분 갱신 헬퍼 (모달 재생성 X)
+  _refreshChatMessages() {
+    const cb = document.getElementById('cb');
+    if (!cb) return;
+    const propId = this._currentChatPropId;
+    if (!propId) return;
     
-    // 메시지 전송
-    document.getElementById('cf').onsubmit = async e => {
-      e.preventDefault();
-      const i = document.getElementById('ci');
-      const msg = i.value.trim();
-      const img = this._chatPendingImage;
-      if (!msg && !img) return;
+    const chats = store.chats.filter(c => c.propId === propId);
+    
+    if (!chats.length) {
+      cb.innerHTML = '<p class="text-center text-slate-400 py-16">대화 없음</p>';
+      return;
+    }
+    
+    cb.innerHTML = chats.map(c => {
+      const isAdmin = c.role === 'Admin';
+      const isMgr = c.role === 'Manager';
+      const align = isAdmin ? 'items-end' : 'items-start';
+      const bg = isAdmin ? 'bg-slate-900 text-white' : isMgr ? 'bg-blue-500 text-white' : 'bg-white border';
+      const hasImage = !!c.image;
+      const hasText = c.message && c.message.trim();
       
-      showLoading(true);
-      try {
-        await store.addChat(propId, msg, img);
-        this._chatPendingImage = null;
-        this.showChatBox(propId);
-      } catch(err) {
-        toast('전송 실패: ' + err.message, 'error');
-      } finally {
-        showLoading(false);
-      }
-    };
+      // ✅ base64를 onclick 속성에 박지 않고 chatId로 조회 (HTML 크기 ↓ → 성능 ↑)
+      return `<div class="flex flex-col ${align}">
+        <p class="text-[9px] font-black text-slate-400 mb-1">${c.sender} · ${c.time}</p>
+        ${hasImage ? `
+          <div class="max-w-[75%] mb-1 group relative">
+            <img src="${c.image}" loading="lazy" class="rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition" onclick="router._viewChatImageById(${c.id})">
+            <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+              <button type="button" onclick="router._downloadChatImageById(${c.id})" class="w-8 h-8 bg-white/90 hover:bg-white rounded-lg flex items-center justify-center shadow" title="다운로드">
+                <i data-lucide="download" class="w-4 h-4 text-slate-700"></i>
+              </button>
+              <button type="button" onclick="router._shareChatImageById(${c.id})" class="w-8 h-8 bg-white/90 hover:bg-white rounded-lg flex items-center justify-center shadow" title="공유">
+                <i data-lucide="share-2" class="w-4 h-4 text-slate-700"></i>
+              </button>
+            </div>
+          </div>
+        ` : ''}
+        ${hasText ? `<div class="max-w-[75%] p-3 rounded-2xl text-sm font-medium ${bg}">${c.message}</div>` : ''}
+      </div>`;
+    }).join('');
     
+    cb.scrollTop = cb.scrollHeight;
     lucide.createIcons();
+  }
+  
+  // ✅ [NEW] 이미지 ID 기반 핸들러 3종
+  _viewChatImageById(chatId) {
+    const chat = store.chats.find(c => c.id == chatId);
+    if (!chat || !chat.image) return;
+    const fname = `${chat.sender}_${chat.time}`.replace(/[^a-zA-Z0-9가-힣_-]/g, '_');
+    this.viewChatImage(chat.image, fname);
+  }
+  
+  _downloadChatImageById(chatId) {
+    const chat = store.chats.find(c => c.id == chatId);
+    if (!chat || !chat.image) return;
+    const fname = `${chat.sender}_${chat.time}`.replace(/[^a-zA-Z0-9가-힣_-]/g, '_');
+    this.downloadChatImage(chat.image, fname);
+  }
+  
+  _shareChatImageById(chatId) {
+    const chat = store.chats.find(c => c.id == chatId);
+    if (!chat || !chat.image) return;
+    const fname = `${chat.sender}_${chat.time}`.replace(/[^a-zA-Z0-9가-힣_-]/g, '_');
+    this.shareChatImage(chat.image, fname);
   }
   
   // ===== [v3.2] 채팅 이미지 액션 =====
@@ -5327,95 +5420,106 @@ class Router {
     }
   }
     admChats(c) {
-    if (!store.properties || !store.properties.length) {
-      c.innerHTML = `<h2 class="text-3xl font-black mb-6">💬 채팅 관리</h2>${UI.Empty('message-square','매물이 없습니다','매물 등록 후 사용 가능합니다')}`;
-      return;
-    }
-    
-    const mode = this.admChatsMode || 'list';
-    const totalChats = (store.chats || []).length;
-    const recentProps = store.properties.filter(p => (store.chats || []).some(c => c.propId === p.id));
-    
-    c.innerHTML = `
-      <div class="flex justify-between items-center mb-6 flex-wrap gap-3">
-        <div>
-          <h2 class="text-3xl font-black">💬 채팅 관리</h2>
-          <p class="text-slate-500 mt-1">매물별 특이사항 채팅 통합 관리 (총 ${totalChats}개 메시지)</p>
-        </div>
-        <div class="bg-slate-100 rounded-xl p-1 flex">
-          <button onclick="router.admChatsMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='list'?'bg-white shadow':'text-slate-500'}">📋 리스트</button>
-          <button onclick="router.admChatsMode='integrated';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='integrated'?'bg-white shadow':'text-slate-500'}">📊 통합</button>
-        </div>
-      </div>
-      
-      <div class="grid grid-cols-3 gap-4 mb-6 mobile-stack">
-        <div class="bg-white p-5 rounded-2xl border">
-          <p class="text-[10px] font-black text-slate-400 uppercase">총 매물</p>
-          <p class="text-2xl font-black mt-2">${store.properties.length}개</p>
-        </div>
-        <div class="bg-white p-5 rounded-2xl border">
-          <p class="text-[10px] font-black text-slate-400 uppercase">대화 진행 중</p>
-          <p class="text-2xl font-black text-green-600 mt-2">${recentProps.length}개</p>
-        </div>
-        <div class="bg-white p-5 rounded-2xl border">
-          <p class="text-[10px] font-black text-slate-400 uppercase">총 메시지</p>
-          <p class="text-2xl font-black text-blue-600 mt-2">${totalChats}건</p>
-        </div>
-      </div>
-    `;
-    
-    if (mode === 'integrated') {
-      c.innerHTML += `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mobile-stack">${store.properties.map(p => {
-        const ch = (store.chats || []).filter(x => x.propId === p.id);
-        return `
-          <div class="bg-white p-4 rounded-2xl border">
-            <h4 class="font-black mb-3 flex items-center gap-2 truncate">
-              ${p.name}
-              ${ch.length ? '<span class="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></span>' : ''}
-            </h4>
-            <div class="h-60 overflow-y-auto scrollbar bg-slate-50 rounded-xl p-3 space-y-2 mb-2">
-              ${ch.length ? ch.slice(-5).map(c => `
-                <div>
-                  <p class="text-[9px] font-black text-slate-400">${c.sender} · ${c.time?.slice(5,16) || ''}</p>
-                  <p class="text-xs font-bold mt-0.5">${c.message}</p>
-                </div>
-              `).join('') : '<p class="text-xs text-slate-400 text-center py-10">대화 없음</p>'}
-            </div>
-            <button onclick="router.showChatBox(${p.id})" class="w-full bg-blue-600 text-white py-2 rounded-lg text-xs font-black hover:bg-blue-700 transition">
-              💬 입장 & 멘트 작성
-            </button>
-          </div>
-        `;
-      }).join('')}</div>`;
-    } else {
-      // 리스트 모드
-      c.innerHTML += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mobile-stack">${store.properties.map(p => {
-        const ch = (store.chats || []).filter(x => x.propId === p.id);
-        const last = ch[ch.length - 1];
-        const img = p.image || (p.images && p.images[p.mainImage || 0]) || 'https://via.placeholder.com/64';
-        return `
-          <div onclick="router.showChatBox(${p.id})" class="bg-white p-5 rounded-2xl border hover:shadow-xl cursor-pointer flex items-center gap-4 transition">
-            <img src="${img}" class="w-16 h-16 rounded-xl object-cover flex-shrink-0" onerror="this.src='https://via.placeholder.com/64'">
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <p class="font-black truncate">${p.name}</p>
-                ${ch.length ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-[9px] font-black flex-shrink-0">최근 대화</span>' : ''}
-              </div>
-              <p class="text-xs text-slate-500 truncate mt-1">
-                ${last ? `<b>${last.sender}:</b> ${last.message}` : '대화 없음'}
-              </p>
-              <p class="text-[10px] text-slate-400 font-bold mt-1">
-                ${last ? last.time : ''} · ${ch.length}개 메시지
-              </p>
-            </div>
-            <i data-lucide="chevron-right" class="w-5 h-5 text-slate-300 flex-shrink-0"></i>
-          </div>
-        `;
-      }).join('')}</div>`;
-    }
-    
-    lucide.createIcons();
+  if (!store.properties || !store.properties.length) {
+    c.innerHTML = `<h2 class="text-3xl font-black mb-6">💬 채팅 관리</h2>${UI.Empty('message-square','매물이 없습니다','매물 등록 후 사용 가능합니다')}`;
+    return;
   }
+  
+  const mode = this.admChatsMode || 'list';
+  const totalChats = (store.chats || []).length;
+  const recentProps = store.properties.filter(p => (store.chats || []).some(c => c.propId === p.id));
+  
+  // 🆕 [수정] 메시지 미리보기 헬퍼 - 사진 있으면 <사진> 표시
+  const formatPreview = (chat) => {
+    if (!chat) return '대화 없음';
+    const hasImg = !!chat.image;
+    const hasText = chat.message && chat.message.trim();
+    if (hasImg && hasText) return `📷 <사진> ${chat.message}`;
+    if (hasImg) return `📷 <사진>`;
+    if (hasText) return chat.message;
+    return '(빈 메시지)';
+  };
+  
+  c.innerHTML = `
+    <div class="flex justify-between items-center mb-6 flex-wrap gap-3">
+      <div>
+        <h2 class="text-3xl font-black">💬 채팅 관리</h2>
+        <p class="text-slate-500 mt-1">매물별 특이사항 채팅 통합 관리 (총 ${totalChats}개 메시지)</p>
+      </div>
+      <div class="bg-slate-100 rounded-xl p-1 flex">
+        <button onclick="router.admChatsMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='list'?'bg-white shadow':'text-slate-500'}">📋 리스트</button>
+        <button onclick="router.admChatsMode='integrated';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode==='integrated'?'bg-white shadow':'text-slate-500'}">📊 통합</button>
+      </div>
+    </div>
+    
+    <div class="grid grid-cols-3 gap-4 mb-6 mobile-stack">
+      <div class="bg-white p-5 rounded-2xl border">
+        <p class="text-[10px] font-black text-slate-400 uppercase">총 매물</p>
+        <p class="text-2xl font-black mt-2">${store.properties.length}개</p>
+      </div>
+      <div class="bg-white p-5 rounded-2xl border">
+        <p class="text-[10px] font-black text-slate-400 uppercase">대화 진행 중</p>
+        <p class="text-2xl font-black text-green-600 mt-2">${recentProps.length}개</p>
+      </div>
+      <div class="bg-white p-5 rounded-2xl border">
+        <p class="text-[10px] font-black text-slate-400 uppercase">총 메시지</p>
+        <p class="text-2xl font-black text-blue-600 mt-2">${totalChats}건</p>
+      </div>
+    </div>
+  `;
+  
+  if (mode === 'integrated') {
+    c.innerHTML += `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mobile-stack">${store.properties.map(p => {
+      const ch = (store.chats || []).filter(x => x.propId === p.id);
+      return `
+        <div class="bg-white p-4 rounded-2xl border">
+          <h4 class="font-black mb-3 flex items-center gap-2 truncate">
+            ${p.name}
+            ${ch.length ? '<span class="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></span>' : ''}
+          </h4>
+          <div class="h-60 overflow-y-auto scrollbar bg-slate-50 rounded-xl p-3 space-y-2 mb-2">
+            ${ch.length ? ch.slice(-5).map(c => `
+              <div>
+                <p class="text-[9px] font-black text-slate-400">${c.sender} · ${c.time?.slice(5,16) || ''}</p>
+                <p class="text-xs font-bold mt-0.5 ${c.image ? 'text-blue-600' : ''}">${formatPreview(c)}</p>
+              </div>
+            `).join('') : '<p class="text-xs text-slate-400 text-center py-10">대화 없음</p>'}
+          </div>
+          <button onclick="router.showChatBox(${p.id})" class="w-full bg-blue-600 text-white py-2 rounded-lg text-xs font-black hover:bg-blue-700 transition">
+            💬 입장 & 멘트 작성
+          </button>
+        </div>
+      `;
+    }).join('')}</div>`;
+  } else {
+    // 리스트 모드
+    c.innerHTML += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mobile-stack">${store.properties.map(p => {
+      const ch = (store.chats || []).filter(x => x.propId === p.id);
+      const last = ch[ch.length - 1];
+      const img = p.image || (p.images && p.images[p.mainImage || 0]) || 'https://via.placeholder.com/64';
+      return `
+        <div onclick="router.showChatBox(${p.id})" class="bg-white p-5 rounded-2xl border hover:shadow-xl cursor-pointer flex items-center gap-4 transition">
+          <img src="${img}" class="w-16 h-16 rounded-xl object-cover flex-shrink-0" onerror="this.src='https://via.placeholder.com/64'">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <p class="font-black truncate">${p.name}</p>
+              ${ch.length ? '<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded text-[9px] font-black flex-shrink-0">최근 대화</span>' : ''}
+            </div>
+            <p class="text-xs text-slate-500 truncate mt-1 ${last && last.image ? 'text-blue-600 font-bold' : ''}">
+              ${last ? `<b>${last.sender}:</b> ${formatPreview(last)}` : '대화 없음'}
+            </p>
+            <p class="text-[10px] text-slate-400 font-bold mt-1">
+              ${last ? last.time : ''} · ${ch.length}개 메시지
+            </p>
+          </div>
+          <i data-lucide="chevron-right" class="w-5 h-5 text-slate-300 flex-shrink-0"></i>
+        </div>
+      `;
+    }).join('')}</div>`;
+  }
+  
+  lucide.createIcons();
+}
   admLogs(c) {
     const allLogs = store.logs || [];
     const specials = allLogs.filter(l => l.special);
