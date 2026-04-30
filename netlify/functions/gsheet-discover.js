@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "qj-pms-secret-change-me";
@@ -156,3 +157,5 @@ export default async (req) => {
 };
 
 export const config = { path: "/api/gsheet-discover" };
+=======
+>>>>>>> parent of e3dfd62 (fix: 전체 시트 분석 - 에러 메시지 개선 + Sheets API 타임아웃 추가)

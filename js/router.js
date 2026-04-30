@@ -4509,34 +4509,13 @@ class Router {
       logEl.scrollTop = logEl.scrollHeight;
     };
 
-        try {
+    try {
+      // 1. 모든 탭 발견
       addLog('🔍 시트의 모든 탭 발견 중...', 'blue-600');
+      const discovery = await API.gsheetDiscover(url);
       
-      let discovery;
-      try {
-        discovery = await API.gsheetDiscover(url);
-      } catch (apiErr) {
-        addLog(`❌ API 호출 실패: ${apiErr.message}`, 'red-600');
-        throw new Error(`gsheet-discover Function 호출 실패: ${apiErr.message}\n\n💡 Netlify 배포 확인 필요`);
-      }
-      
-      if (!discovery) {
-        throw new Error('서버에서 빈 응답을 받았습니다 (Function 타임아웃 가능성)');
-      }
-      
-      if (!discovery.success) {
-        addLog(`❌ ${discovery.error}`, 'red-600');
-        if (discovery.attempts) {
-          discovery.attempts.forEach(a => addLog(`  ▶ ${a}`, 'slate-500'));
-        }
-        if (discovery.hints) {
-          discovery.hints.forEach(h => addLog(`  💡 ${h}`, 'amber-600'));
-        }
-        throw new Error(discovery.error);
-      }
-      
-      if (!discovery.sheets?.length) {
-        throw new Error('탭을 0개 발견했습니다');
+      if (!discovery.success || !discovery.sheets?.length) {
+        throw new Error(discovery.error || '탭을 발견할 수 없습니다');
       }
 
       addLog(`✅ ${discovery.sheets.length}개 탭 발견 (${discovery.method})`, 'green-600');
