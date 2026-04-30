@@ -169,17 +169,22 @@ ${JSON.stringify(sampleRows, null, 2)}
   }
 }`;
 
-  // 한 번에 1개 모델만 시도 (타임아웃 방지)
-  const models = ['gemini-2.5-flash', 'gemini-flash-latest'];
+  const models = [
+    { name: 'gemini-2.5-flash', timeout: 18000 },
+    { name: 'gemini-flash-latest', timeout: 6000 }
+  ];
+  
   let lastError = null;
 
-  for (const model of models) {
+  for (const { name, timeout } of models) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      console.log(`🤖 AI 분석 시도: ${name} (timeout: ${timeout}ms)`);
+      const startTime = Date.now();
       
-      // 6초 타임아웃 설정
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${name}:generateContent?key=${GEMINI_API_KEY}`;
+      
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
       
       const res = await fetch(url, {
         method: 'POST',
@@ -196,21 +201,25 @@ ${JSON.stringify(sampleRows, null, 2)}
       });
       
       clearTimeout(timeoutId);
+      const elapsed = Date.now() - startTime;
 
       if (res.ok) {
         const data = await res.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) throw new Error("AI 응답이 비어있습니다");
-        console.log(`✅ AI 분석 성공: ${model}`);
+        console.log(`✅ AI 분석 성공: ${name} (${elapsed}ms)`);
         return JSON.parse(text);
       }
 
       const errText = await res.text();
-      lastError = `${model} (${res.status}): ${errText.slice(0, 150)}`;
-      console.warn(lastError);
+      lastError = `${name} (${res.status}): ${errText.slice(0, 150)}`;
+      console.warn(`⚠️ ${lastError} (${elapsed}ms)`);
     } catch (e) {
-      lastError = `${model}: ${e.message}`;
-      console.warn(lastError);
+      const errMsg = e.name === 'AbortError' 
+        ? `타임아웃 (${timeout}ms 초과)` 
+        : e.message;
+      lastError = `${name}: ${errMsg}`;
+      console.warn(`⚠️ ${lastError}`);
     }
   }
 
