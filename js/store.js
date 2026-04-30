@@ -130,7 +130,24 @@ class Store {
     sessionStorage.removeItem('qj_user');
     API.logout();
   }
-
+  // ===== [v3.2] 매물 필터링 헬퍼 =====
+  visibleProperties() { 
+    return (this.properties || []).filter(p => !p.hidden); 
+  }
+  
+  statsProperties() { 
+    return (this.properties || []).filter(p => !p.excludeFromStats); 
+  }
+  
+  statsBookings() {
+    const ids = new Set(this.statsProperties().map(p => p.id));
+    return (this.bookings || []).filter(b => ids.has(b.propId));
+  }
+  
+  statsExpenses() {
+    const ids = new Set(this.statsProperties().map(p => p.id));
+    return (this.expenses || []).filter(e => ids.has(e.propId));
+  }
   // ===== 헬퍼 =====
   prop(id) { return this.properties.find(p => p.id === parseInt(id)); }
   user(id) { return this.users.find(u => u.id === id); }
@@ -339,12 +356,14 @@ class Store {
   }
 
   // ===== 채팅 =====
-  async addChat(propId, msg) {
+    // ===== 채팅 (이미지 지원) =====
+  async addChat(propId, msg, imageData = null) {
     const c = {
       propId: +propId,
       sender: this.currentUser.name,
       role: this.currentUser.role,
-      message: msg,
+      message: msg || '',
+      image: imageData || null,
       time: nowTime()
     };
     const created = await API.create('chats', c);
@@ -352,13 +371,57 @@ class Store {
     
     const p = this.prop(propId);
     if (p) {
+      const notifMsg = imageData ? '📷 사진을 보냈습니다' : (msg || '').slice(0, 30);
       if (p.manager && p.manager !== this.currentUser.id) {
-        await this.notify(p.manager, `💬 [${p.name}] 새 메시지: ${this.currentUser.name}님`, 'info', { type:'chat', propId:propId });
+        await this.notify(p.manager, `💬 [${p.name}] 새 메시지: ${this.currentUser.name}님 - ${notifMsg}`, 'info', { type:'chat', propId:propId });
       }
       if (this.currentUser.role !== 'Admin') {
         await this.notifyAdmins(`💬 [${p.name}] 채팅: ${this.currentUser.name}님`, 'info', { type:'chat', propId:propId });
       }
     }
+  }
+
+  // ===== [v3.2] 채팅 이미지 업로드 (자동 압축) =====
+  async uploadChatImage(file) {
+    if (file.size > 15 * 1024 * 1024) throw new Error('15MB 초과');
+    if (!file.type.startsWith('image/')) throw new Error('이미지 파일이 아닙니다');
+    
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 1600;
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > MAX_SIZE || height > MAX_SIZE) {
+            const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          
+          const originalKB = Math.round(file.size / 1024);
+          const compressedKB = Math.round(compressed.length * 0.75 / 1024);
+          console.log(`📷 채팅 이미지 압축: ${originalKB}KB → ${compressedKB}KB`);
+          
+          resolve(compressed);
+        } catch (e) { reject(e); }
+      };
+      img.onerror = () => reject(new Error('이미지 로드 실패'));
+      const reader = new FileReader();
+      reader.onload = e => { img.src = e.target.result; };
+      reader.onerror = () => reject(new Error('파일 읽기 실패'));
+      reader.readAsDataURL(file);
+    });
   }
 
   // ===== 지출 =====
@@ -1115,6 +1178,24 @@ async fetchPublicSiteConfig() {
       console.error('Smart pricing error:', e);
       return null;
     }
+  }
+    // ===== [v3.2] 매물 필터링 헬퍼 =====
+  visibleProperties() {
+    return (this.properties || []).filter(p => !p.hidden);
+  }
+
+  statsProperties() {
+    return (this.properties || []).filter(p => !p.excludeFromStats);
+  }
+
+  statsBookings() {
+    const ids = new Set(this.statsProperties().map(p => p.id));
+    return (this.bookings || []).filter(b => ids.has(b.propId));
+  }
+
+  statsExpenses() {
+    const ids = new Set(this.statsProperties().map(p => p.id));
+    return (this.expenses || []).filter(e => ids.has(e.propId));
   }
 }
 
