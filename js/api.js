@@ -3,6 +3,13 @@ window.API = {
   getToken() { return sessionStorage.getItem('qj_token'); },
   setToken(t) { if (t) sessionStorage.setItem('qj_token', t); else sessionStorage.removeItem('qj_token'); },
 
+    async aiMap(type, columns, sampleRows) {
+    return this.request('/ai-map', {
+      method: 'POST',
+      body: JSON.stringify({ type, columns, sampleRows })
+    });
+  },
+  
   async request(path, options={}) {
     const token = this.getToken();
     const headers = {
@@ -51,4 +58,5 @@ window.API = {
   async update(c, id, d) { return this.request(`/data?collection=${c}&id=${id}`, { method:'PUT', body: JSON.stringify(d) }); },
   async delete(c, id) { return this.request(`/data?collection=${c}&id=${id}`, { method:'DELETE' }); },
   async setAll(c, d) { return this.request(`/data?collection=${c}&bulk=1`, { method:'PUT', body: JSON.stringify({ data: d }) }); }
+  
 };

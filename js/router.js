@@ -4298,7 +4298,7 @@ class Router {
   }
 
   // ===== [v3.2] 컬럼 매핑 UI 렌더링 =====
-  _renderGSheetMapping() {
+    _renderGSheetMapping() {
     const fieldLabels = {
       properties: { name:'숙소명*', group:'그룹', location:'위치', address:'주소', price:'1박가격*', cost:'원가', manager:'담당자(ID)' },
       bookings: { propName:'숙소명*', guest:'예약자*', contact:'연락처', checkIn:'체크인*', checkOut:'체크아웃*', price:'가격*', platform:'플랫폼', people:'인원', nationality:'국적' },
@@ -4310,9 +4310,14 @@ class Router {
 
     let html = `
       <div class="bg-white border-2 rounded-2xl p-6 mb-4">
-        <h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="columns" class="w-5 h-5"></i>2️⃣ 컬럼 매핑 (자동 추천 + 수동 수정)</h3>
-        <div class="bg-blue-50 p-3 rounded-xl mb-4 text-xs font-bold text-blue-700">💡 *표시는 필수 항목입니다 · "사용안함" 선택 시 해당 필드는 비워둡니다</div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h3 class="font-black flex items-center gap-2"><i data-lucide="columns" class="w-5 h-5"></i>2️⃣ 컬럼 매핑</h3>
+          <button onclick="router.aiAutoMap()" class="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-xl font-black text-sm flex items-center gap-2 hover:shadow-lg transition">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>🤖 Gemini AI 자동 매핑
+          </button>
+        </div>
+        <div class="bg-blue-50 p-3 rounded-xl mb-4 text-xs font-bold text-blue-700">💡 *표시는 필수 항목 · "사용안함" 선택 시 비워둠 · <b>AI 자동 매핑</b> 버튼으로 한번에 매칭 가능</div>
+        <div id="mappingGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${fields.map(f => `
             <div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl">
               <span class="font-black text-sm w-32 flex-shrink-0">${labels[f]}</span>
@@ -4334,7 +4339,7 @@ class Router {
             <tbody class="divide-y">${this._gsRows.slice(0,5).map(r => `<tr>${cols.map(c => `<td class="px-3 py-2 truncate max-w-[150px]">${r[c]||'-'}</td>`).join('')}</tr>`).join('')}</tbody>
           </table>
         </div>
-        <p class="text-xs text-slate-400 font-bold mt-3">총 <b class="text-blue-600">${this._gsRows.length}행</b> · 처음 5행만 표시</p>
+        <p class="text-xs text-slate-400 font-bold mt-3">총 <b class="text-blue-600">${this._gsRows.length}행</b></p>
       </div>
 
       <div class="bg-white border-2 rounded-2xl p-6 mb-4">
@@ -4342,7 +4347,7 @@ class Router {
         <div class="space-y-2">
           <label class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer">
             <input type="radio" name="gsMode" value="add" checked>
-            <span class="text-sm font-bold">➕ <b>추가만</b>: 신규 항목만 등록 (중복은 건너뜀)</span>
+            <span class="text-sm font-bold">➕ <b>추가만</b>: 신규 항목만 등록 (중복 건너뜀)</span>
           </label>
           <label class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer">
             <input type="radio" name="gsMode" value="all">
@@ -4366,6 +4371,39 @@ class Router {
     });
 
     lucide.createIcons();
+  }
+
+  // ===== [v3.3] Gemini AI 자동 매핑 =====
+  async aiAutoMap() {
+    if (!this._gsRows || !this._gsColumns) {
+      toast('먼저 시트 데이터를 가져오세요', 'error');
+      return;
+    }
+
+    showLoading(true);
+    try {
+      const sampleRows = this._gsRows.slice(0, 3);
+      const result = await API.aiMap(this._gsType, this._gsColumns, sampleRows);
+      
+      if (result.success && result.mapping) {
+        this._gsMapping = result.mapping;
+        
+        // UI 업데이트
+        Object.keys(result.mapping).forEach(field => {
+          const sel = document.querySelector(`[data-mapfield="${field}"]`);
+          if (sel) sel.value = result.mapping[field];
+        });
+        
+        const matched = Object.keys(result.mapping).length;
+        toast(`🤖 AI가 ${matched}개 필드를 자동 매핑했습니다 (${result.provider})`, 'success');
+      } else {
+        toast('AI 매핑 결과를 받지 못했습니다', 'error');
+      }
+    } catch (e) {
+      toast('AI 매핑 실패: ' + e.message, 'error');
+    } finally {
+      showLoading(false);
+    }
   }
     // ===== [v3.2] GSheets 데이터 변환 =====
   _transformGSheetRows() {
