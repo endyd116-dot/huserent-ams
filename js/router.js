@@ -4077,127 +4077,392 @@ class Router {
     };
     lucide.createIcons();
   }
-      admBackup(c) {
+        admBackup(c) {
     const savedUrl = localStorage.getItem('qj_gsheet_lastUrl') || '';
     c.innerHTML = `
       <div class="mb-6">
-        <h2 class="text-3xl font-black">💾 백업 / 복원 / 외부 연동</h2>
-        <p class="text-slate-500 mt-1">데이터 백업, 복원, Google Sheets 가져오기 통합 관리</p>
+        <h2 class="text-3xl font-black">💾 백업 / 복원 / AI 동기화</h2>
+        <p class="text-slate-500 mt-1">데이터 백업 + Google Sheets AI 자동 동기화</p>
       </div>
-      
+
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mobile-stack mb-6">
         <div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl">
-          <h3 class="font-black text-lg mb-3 flex items-center gap-2"><i data-lucide="download" class="w-6 h-6"></i>📥 백업 다운로드</h3>
-          <p class="text-sm opacity-80 mb-4">현재 모든 데이터를 JSON 파일로 다운로드합니다.</p>
-          <div class="bg-white/10 p-4 rounded-xl mb-4 text-xs space-y-1">
+          <h3 class="font-black text-lg mb-3 flex items-center gap-2"><i data-lucide="download" class="w-5 h-5"></i>📥 백업 다운로드</h3>
+          <div class="bg-white/10 p-3 rounded-xl mb-4 text-xs space-y-1">
             <div class="flex justify-between"><span>매물:</span><b>${(store.properties||[]).length}개</b></div>
             <div class="flex justify-between"><span>예약:</span><b>${(store.bookings||[]).length}건</b></div>
             <div class="flex justify-between"><span>지출:</span><b>${(store.expenses||[]).length}건</b></div>
-            <div class="flex justify-between"><span>채팅:</span><b>${(store.chats||[]).length}개</b></div>
-            <div class="flex justify-between"><span>이용자:</span><b>${(store.users||[]).length}명</b></div>
-            <div class="flex justify-between"><span>스케줄:</span><b>${(store.schedule||[]).length}건</b></div>
           </div>
-          <button onclick="router.exportBackup()" class="w-full bg-white text-blue-600 py-4 rounded-xl font-black uppercase hover:bg-blue-50 transition">💾 JSON 다운로드</button>
+          <button onclick="router.exportBackup()" class="w-full bg-white text-blue-600 py-3 rounded-xl font-black uppercase">💾 JSON 다운로드</button>
         </div>
-        
+
         <div class="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-6 rounded-2xl">
-          <h3 class="font-black text-lg mb-3 flex items-center gap-2"><i data-lucide="upload" class="w-6 h-6"></i>📤 백업 복원</h3>
-          <p class="text-sm opacity-90 mb-4">⚠️ 기존 데이터가 백업 파일의 데이터로 <b>덮어쓰기</b>됩니다.</p>
-          <div class="bg-white/10 p-4 rounded-xl mb-4 text-xs">
-            <p class="font-bold mb-2">복원 대상:</p>
-            <p class="opacity-90">매물·예약·지출·채팅·스케줄·인터넷·물품·그룹·플랫폼·카테고리·고객메모·사이트설정</p>
-            <p class="font-bold mt-2 text-yellow-200">🚫 보안상 비밀번호는 복원되지 않습니다</p>
-          </div>
-          <label class="block w-full">
+          <h3 class="font-black text-lg mb-3 flex items-center gap-2"><i data-lucide="upload" class="w-5 h-5"></i>📤 백업 복원</h3>
+          <p class="text-xs opacity-90 mb-4">⚠️ 기존 데이터가 덮어쓰기됩니다.</p>
+          <label class="block">
             <input type="file" id="backupFile" accept=".json" class="hidden">
-            <div class="bg-white text-amber-700 py-4 rounded-xl font-black uppercase hover:bg-amber-50 text-center cursor-pointer transition">📂 JSON 파일 선택</div>
+            <div class="bg-white text-amber-700 py-3 rounded-xl font-black uppercase text-center cursor-pointer">📂 JSON 파일 선택</div>
           </label>
         </div>
       </div>
-      
-      <div class="bg-white border-2 rounded-2xl p-6 mb-6">
-        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
-          <h3 class="font-black text-xl flex items-center gap-2"><i data-lucide="table" class="w-6 h-6 text-green-600"></i>📊 Google Sheets 가져오기</h3>
-          <span class="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-black">NEW</span>
+
+      <div class="bg-gradient-to-br from-purple-600 via-pink-600 to-rose-600 text-white p-6 rounded-2xl mb-6 shadow-2xl">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+          <div>
+            <h3 class="font-black text-2xl flex items-center gap-2"><i data-lucide="sparkles" class="w-7 h-7"></i>🤖 AI 스마트 동기화</h3>
+            <p class="text-sm opacity-90 mt-1">URL 한 번 입력으로 AI가 자동 분석·매핑·비교까지 처리</p>
+          </div>
+          <span class="bg-white/20 backdrop-blur px-3 py-1 rounded-full text-xs font-black">Gemini 2.0 Flash</span>
         </div>
-        <p class="text-sm text-slate-500 mb-4">Google 시트 데이터를 자동으로 분석하여 매물/예약/지출에 등록합니다</p>
-        
-        <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 mb-4">
-          <h4 class="font-black text-amber-700 mb-2 flex items-center gap-2 text-sm"><i data-lucide="alert-triangle" class="w-4 h-4"></i>⚠️ 사용 전 필수 설정</h4>
-          <ol class="text-xs text-amber-700 font-bold space-y-1 ml-5 list-decimal">
-            <li>Google Sheet 우측 상단 <b>"공유"</b> 클릭</li>
-            <li>일반 액세스를 <b>"링크가 있는 모든 사용자"</b>로 변경</li>
-            <li>권한을 <b>"뷰어"</b>로 설정 후 완료</li>
-          </ol>
+
+        <div class="bg-white/10 backdrop-blur rounded-xl p-4 mb-4">
+          <p class="text-xs font-black uppercase opacity-80 mb-2">🔄 처리 단계</p>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+            <div class="bg-white/10 rounded-lg p-2 text-center"><p class="font-black">1️⃣</p><p class="opacity-90">플랫폼 분석</p></div>
+            <div class="bg-white/10 rounded-lg p-2 text-center"><p class="font-black">2️⃣</p><p class="opacity-90">시트 접근</p></div>
+            <div class="bg-white/10 rounded-lg p-2 text-center"><p class="font-black">3️⃣</p><p class="opacity-90">AI 매핑</p></div>
+            <div class="bg-white/10 rounded-lg p-2 text-center"><p class="font-black">4️⃣</p><p class="opacity-90">변환</p></div>
+            <div class="bg-white/10 rounded-lg p-2 text-center"><p class="font-black">5️⃣</p><p class="opacity-90">비교/적용</p></div>
+          </div>
         </div>
-        
+
         <div class="space-y-3">
-          <input type="text" id="gsUrl" value="${savedUrl}" placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..." class="w-full p-4 border-2 rounded-xl font-mono text-sm">
-          <div class="flex gap-3 flex-wrap">
-            <select id="gsType" class="p-3 border-2 rounded-xl font-bold">
-              <option value="properties">🏠 매물 (Properties)</option>
-              <option value="bookings">📅 예약 (Bookings)</option>
-              <option value="expenses">💳 지출 (Expenses)</option>
-            </select>
-            <button onclick="router.fetchGSheet()" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-black flex items-center gap-2"><i data-lucide="download-cloud" class="w-4 h-4"></i>데이터 가져오기</button>
-          </div>
+          <input type="text" id="gsUrl" value="${savedUrl}" placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..." class="w-full p-4 rounded-xl font-mono text-sm text-slate-900">
+          <button onclick="router.runSmartSync()" class="w-full bg-white text-purple-700 py-4 rounded-xl font-black uppercase text-base hover:shadow-2xl transition flex items-center justify-center gap-2">
+            <i data-lucide="zap" class="w-5 h-5"></i>🚀 AI 자동 동기화 시작
+          </button>
         </div>
-        
-        <div id="gsResult" class="mt-6"></div>
-        
-        <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mt-4">
-          <h4 class="font-black text-blue-700 mb-2 text-sm">💡 시트 양식 가이드</h4>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-            <div class="bg-white p-3 rounded-lg">
-              <p class="font-black text-blue-600 mb-1">🏠 매물</p>
-              <p class="text-slate-500">권장 컬럼:</p>
-              <p class="font-bold mt-1">숙소명, 그룹, 위치, 주소, 1박가격, 원가, 담당자</p>
-            </div>
-            <div class="bg-white p-3 rounded-lg">
-              <p class="font-black text-blue-600 mb-1">📅 예약</p>
-              <p class="text-slate-500">권장 컬럼:</p>
-              <p class="font-bold mt-1">숙소, 예약자, 연락처, 체크인, 체크아웃, 가격, 플랫폼, 인원</p>
-            </div>
-            <div class="bg-white p-3 rounded-lg">
-              <p class="font-black text-blue-600 mb-1">💳 지출</p>
-              <p class="text-slate-500">권장 컬럼:</p>
-              <p class="font-bold mt-1">날짜, 숙소, 대분류, 소분류, 금액, 메모</p>
-            </div>
-          </div>
-          <p class="text-xs text-blue-700 font-bold mt-3">💡 첫 행은 컬럼명, 두 번째 행부터 데이터여야 합니다. 컬럼명이 달라도 자동 매핑 후 수정 가능합니다.</p>
+
+        <div class="bg-white/10 rounded-xl p-3 mt-3 text-xs opacity-90">
+          💡 <b>사전 준비</b>: Google Sheet → "공유" → "링크가 있는 모든 사용자: 뷰어"로 설정
         </div>
       </div>
-      
-      <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6">
-        <h3 class="font-black text-red-700 mb-3 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5"></i>⚠️ 데이터 보호 안내</h3>
-        <ul class="text-sm text-red-700 font-bold space-y-1 ml-4">
-          <li>• 백업은 <b>주 1회</b> 정기적으로 권장합니다</li>
-          <li>• 복원/가져오기 전에 반드시 현재 상태도 백업하세요</li>
-          <li>• JSON 파일은 안전한 위치(클라우드 등)에 보관하세요</li>
-          <li>• Google Sheets는 <b>"링크가 있는 모든 사용자: 뷰어"</b>로만 공유</li>
-        </ul>
-      </div>
+
+      <div id="syncResult"></div>
     `;
-    
+
     document.getElementById('backupFile').onchange = async e => {
       const file = e.target.files[0];
       if (!file) return;
-      if (!confirm('⚠️ 현재 데이터가 백업 파일로 덮어쓰기됩니다. 계속하시겠습니까?')) return;
+      if (!confirm('⚠️ 현재 데이터가 덮어쓰기됩니다. 계속?')) return;
       showLoading(true);
       try {
         const text = await file.text();
         const data = JSON.parse(text);
         const restored = await store.importBackup(data);
-        toast(`✅ ${restored}개 컬렉션 복원 완료`, 'success');
+        toast(`✅ ${restored}개 컬렉션 복원`, 'success');
         await store.loadAll();
         await this.renderAdmin();
-      } catch(err) {
-        toast('복원 실패: ' + err.message, 'error');
-      } finally {
-        showLoading(false);
-      }
+      } catch(err) { toast('실패: ' + err.message, 'error'); }
+      finally { showLoading(false); }
     };
     lucide.createIcons();
+  }
+    // ===== [v3.3] AI 스마트 동기화 실행 =====
+  async runSmartSync() {
+    const url = document.getElementById('gsUrl').value.trim();
+    if (!url) { toast('Google Sheet URL을 입력하세요', 'error'); return; }
+
+    localStorage.setItem('qj_gsheet_lastUrl', url);
+    const resultEl = document.getElementById('syncResult');
+
+    // 진행 상태 표시
+    resultEl.innerHTML = `
+      <div class="bg-white border-2 rounded-2xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+          <div>
+            <p class="font-black text-lg">🤖 AI 분석 중...</p>
+            <p class="text-xs text-slate-500 font-bold mt-1">최대 30초 소요됩니다</p>
+          </div>
+        </div>
+        <div id="syncLog" class="space-y-1 text-xs font-mono bg-slate-50 p-3 rounded-xl max-h-48 overflow-y-auto"></div>
+      </div>
+    `;
+
+    const logEl = document.getElementById('syncLog');
+    const addLog = (msg) => {
+      logEl.innerHTML += `<div class="text-slate-700">${msg}</div>`;
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    addLog('▶ 요청 전송 중...');
+
+    try {
+      const result = await API.gsheetSmart(
+        url,
+        store.properties || [],
+        store.bookings || [],
+        store.expenses || []
+      );
+
+      if (!result.success) throw new Error(result.error || 'AI 분석 실패');
+
+      // 서버 로그 표시
+      logEl.innerHTML = '';
+      (result.log || []).forEach(l => {
+        const stepIcon = ['🔍', '🌐', '🤖', '🔄', '🔍'][l.step - 1] || '▶';
+        addLog(`<span class="text-purple-600 font-black">[${l.step}] ${stepIcon}</span> ${l.msg} <span class="text-slate-400">(${l.time}ms)</span>`);
+      });
+
+      this._smartSyncResult = result;
+      this._renderSmartSyncResult(result);
+    } catch (e) {
+      resultEl.innerHTML = `
+        <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6">
+          <h3 class="font-black text-red-700 mb-2 flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i>❌ 동기화 실패</h3>
+          <p class="text-sm text-red-700 font-bold mb-3">${e.message}</p>
+          <details class="bg-white p-3 rounded-xl">
+            <summary class="cursor-pointer text-xs font-black text-slate-600">🔍 일반 해결 방법</summary>
+            <ul class="text-xs text-slate-600 font-bold mt-2 space-y-1 ml-4 list-disc">
+              <li>Google Sheet가 "링크가 있는 모든 사용자: 뷰어"로 공유되었는지 확인</li>
+              <li>URL이 정확한지 확인 (gid 포함)</li>
+              <li>Netlify 환경변수 GEMINI_API_KEY 등록 여부 확인</li>
+              <li>시트에 최소 1행 이상 데이터 존재 여부 확인</li>
+            </ul>
+          </details>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+  }
+
+  // ===== [v3.3] AI 분석 결과 렌더링 =====
+  _renderSmartSyncResult(r) {
+    const resultEl = document.getElementById('syncResult');
+    const confColor = { high: 'green', medium: 'amber', low: 'red' }[r.confidence] || 'slate';
+    const confLabel = { high: '높음 ✅', medium: '중간 ⚠️', low: '낮음 ❓' }[r.confidence] || r.confidence;
+
+    let html = `
+      <div class="bg-white border-2 rounded-2xl p-6 mb-4">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+          <div class="flex items-center gap-3">
+            <i data-lucide="check-circle" class="w-8 h-8 text-green-500"></i>
+            <div>
+              <h3 class="font-black text-xl">✅ AI 분석 완료</h3>
+              <p class="text-xs text-slate-500 font-bold">${r.duration}ms · ${r.provider}</p>
+            </div>
+          </div>
+          <span class="px-3 py-1 bg-${confColor}-100 text-${confColor}-700 rounded-full text-xs font-black">신뢰도: ${confLabel}</span>
+        </div>
+
+        <div class="bg-blue-50 p-4 rounded-xl mb-4">
+          <p class="text-xs font-black text-blue-700 uppercase mb-1">🎯 감지된 데이터 타입</p>
+          <p class="font-black text-lg">${r.typeLabel}</p>
+          <p class="text-xs text-blue-700 font-bold mt-1">💡 ${r.reason}</p>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div class="bg-slate-50 p-3 rounded-xl text-center"><p class="text-[10px] font-black text-slate-500 uppercase">총 행수</p><p class="text-2xl font-black mt-1">${r.stats.totalRows}</p></div>
+          <div class="bg-green-50 p-3 rounded-xl text-center border-2 border-green-200"><p class="text-[10px] font-black text-green-600 uppercase">➕ 추가</p><p class="text-2xl font-black text-green-700 mt-1">${r.stats.addCount}</p></div>
+          <div class="bg-amber-50 p-3 rounded-xl text-center border-2 border-amber-200"><p class="text-[10px] font-black text-amber-600 uppercase">✏️ 수정</p><p class="text-2xl font-black text-amber-700 mt-1">${r.stats.updateCount}</p></div>
+          <div class="bg-slate-100 p-3 rounded-xl text-center"><p class="text-[10px] font-black text-slate-500 uppercase">동일</p><p class="text-2xl font-black text-slate-600 mt-1">${r.stats.unchangedCount}</p></div>
+        </div>
+
+        ${r.stats.errorRows ? `<div class="bg-red-50 border-2 border-red-200 rounded-xl p-3 mb-4">
+          <p class="font-black text-red-700 text-sm flex items-center gap-2"><i data-lucide="alert-triangle" class="w-4 h-4"></i>⚠️ 오류 ${r.stats.errorRows}건</p>
+          <details class="mt-2"><summary class="cursor-pointer text-xs font-bold text-red-600">🔻 오류 상세 보기</summary>
+            <div class="bg-white p-2 rounded mt-2 max-h-32 overflow-y-auto text-xs space-y-0.5">${(r.errors||[]).map(e => `<p class="text-red-700">• ${e}</p>`).join('')}</div>
+          </details>
+        </div>` : ''}
+
+        <details class="bg-slate-50 rounded-xl p-3 mb-4">
+          <summary class="cursor-pointer text-sm font-black text-slate-700 flex items-center gap-2"><i data-lucide="columns" class="w-4 h-4"></i>🗺️ AI 컬럼 매핑 결과 (${Object.keys(r.mapping||{}).length}개)</summary>
+          <div class="mt-3 space-y-1 text-xs">
+            ${Object.entries(r.mapping||{}).map(([k,v]) => `<div class="flex items-center gap-2 bg-white p-2 rounded">
+              <span class="font-black text-slate-700 w-24">${k}</span>
+              <i data-lucide="arrow-right" class="w-3 h-3 text-slate-400"></i>
+              <span class="font-bold text-blue-600">"${v}"</span>
+            </div>`).join('')}
+          </div>
+        </details>
+      </div>
+    `;
+
+    // 추가될 항목 미리보기
+    if (r.adds && r.adds.length) {
+      html += `
+        <div class="bg-white border-2 border-green-200 rounded-2xl mb-4 overflow-hidden">
+          <div class="bg-green-50 p-4 border-b border-green-200">
+            <h4 class="font-black text-green-700 flex items-center gap-2"><i data-lucide="plus-circle" class="w-5 h-5"></i>➕ 신규 추가될 항목 (${r.adds.length}건)</h4>
+          </div>
+          <div class="max-h-72 overflow-y-auto scrollbar">
+            <table class="w-full text-xs">
+              <thead class="bg-slate-50 sticky top-0">
+                <tr>${this._getDisplayFields(r.type).map(f => `<th class="px-3 py-2 text-left font-black text-slate-500 uppercase text-[10px]">${f.label}</th>`).join('')}</tr>
+              </thead>
+              <tbody class="divide-y">
+                ${r.adds.slice(0, 100).map(item => `<tr class="hover:bg-green-50/50">${this._getDisplayFields(r.type).map(f => `<td class="px-3 py-2 truncate max-w-[200px]">${this._formatValue(item[f.key])}</td>`).join('')}</tr>`).join('')}
+              </tbody>
+            </table>
+            ${r.adds.length > 100 ? `<p class="p-3 text-center text-xs text-slate-400 font-bold">+ 나머지 ${r.adds.length - 100}건은 적용 시 함께 추가됩니다</p>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    // 수정될 항목 (변경 내역 표시)
+    if (r.updates && r.updates.length) {
+      html += `
+        <div class="bg-white border-2 border-amber-200 rounded-2xl mb-4 overflow-hidden">
+          <div class="bg-amber-50 p-4 border-b border-amber-200">
+            <h4 class="font-black text-amber-700 flex items-center gap-2"><i data-lucide="edit-3" class="w-5 h-5"></i>✏️ 수정될 항목 (${r.updates.length}건)</h4>
+            <p class="text-xs text-amber-600 font-bold mt-1">변경된 필드만 자세히 표시됩니다</p>
+          </div>
+          <div class="max-h-96 overflow-y-auto scrollbar p-3 space-y-2">
+            ${r.updates.slice(0, 50).map((item, i) => `<div class="bg-amber-50 rounded-xl p-3 border border-amber-200">
+              <p class="font-black text-sm mb-2">${this._getItemTitle(item, r.type)} <span class="text-[10px] text-slate-500">(${i+1}/${r.updates.length})</span></p>
+              <div class="space-y-1 text-xs">
+                ${(item._changes||[]).map(c => `<div class="flex items-center gap-2 bg-white p-2 rounded">
+                  <span class="font-black text-slate-700 w-20">${c.field}:</span>
+                  <span class="text-red-500 line-through truncate max-w-[150px]">${this._formatValue(c.from)}</span>
+                  <i data-lucide="arrow-right" class="w-3 h-3 text-amber-500 flex-shrink-0"></i>
+                  <span class="text-green-600 font-bold truncate max-w-[150px]">${this._formatValue(c.to)}</span>
+                </div>`).join('')}
+              </div>
+            </div>`).join('')}
+            ${r.updates.length > 50 ? `<p class="p-3 text-center text-xs text-slate-400 font-bold">+ 나머지 ${r.updates.length - 50}건은 적용 시 함께 수정됩니다</p>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    // 적용 / 취소 버튼
+    if ((r.adds && r.adds.length) || (r.updates && r.updates.length)) {
+      html += `
+        <div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-5 rounded-2xl">
+          <p class="font-black text-lg mb-2">🚀 변경사항 적용 준비 완료</p>
+          <p class="text-sm opacity-90 mb-4">총 <b>${r.stats.addCount}건 추가</b> + <b>${r.stats.updateCount}건 수정</b>이 적용됩니다</p>
+          <div class="flex gap-2">
+            <button onclick="router.applySmartSync()" class="flex-1 bg-white text-purple-700 py-3 rounded-xl font-black uppercase hover:shadow-xl transition">✅ 적용하기</button>
+            <button onclick="router.cancelSmartSync()" class="px-6 bg-white/20 backdrop-blur text-white py-3 rounded-xl font-black uppercase">취소</button>
+          </div>
+        </div>
+      `;
+    } else {
+      html += `<div class="bg-blue-50 border-2 border-blue-200 rounded-2xl p-5 text-center">
+        <i data-lucide="check-circle" class="w-10 h-10 text-blue-500 mx-auto mb-2"></i>
+        <p class="font-black text-blue-700">✨ 모든 데이터가 이미 최신 상태입니다</p>
+      </div>`;
+    }
+
+    resultEl.innerHTML = html;
+    lucide.createIcons();
+  }
+
+  // 표시 필드 정의
+  _getDisplayFields(type) {
+    return {
+      properties: [{key:'name',label:'숙소명'},{key:'group',label:'그룹'},{key:'location',label:'위치'},{key:'price',label:'가격'},{key:'cost',label:'원가'}],
+      bookings: [{key:'propName',label:'숙소'},{key:'guest',label:'예약자'},{key:'checkIn',label:'체크인'},{key:'checkOut',label:'체크아웃'},{key:'price',label:'가격'},{key:'platform',label:'플랫폼'}],
+      expenses: [{key:'propName',label:'숙소'},{key:'date',label:'날짜'},{key:'category',label:'분류'},{key:'amount',label:'금액'},{key:'memo',label:'메모'}]
+    }[type] || [];
+  }
+
+  _getItemTitle(item, type) {
+    if (type === 'properties') return item.name;
+    if (type === 'bookings') {
+      const p = store.prop(item.propId);
+      return `${p?.name || '?'} - ${item.guest} (${item.checkIn})`;
+    }
+    if (type === 'expenses') {
+      const p = store.prop(item.propId);
+      return `${p?.name || '?'} - ${item.category} (${item.date})`;
+    }
+    return '항목';
+  }
+
+  _formatValue(v) {
+    if (v === null || v === undefined || v === '') return '<span class="text-slate-300">(비어있음)</span>';
+    if (typeof v === 'number') return v.toLocaleString();
+    return String(v).slice(0, 50);
+  }
+
+  // ===== [v3.3] 변경사항 적용 =====
+  async applySmartSync() {
+    const r = this._smartSyncResult;
+    if (!r) { toast('적용할 데이터가 없습니다', 'error'); return; }
+
+    if (!confirm(`✅ ${r.stats.addCount}건 추가 + ${r.stats.updateCount}건 수정을 적용하시겠습니까?`)) return;
+
+    showLoading(true);
+    let added = 0, updated = 0, failed = 0;
+
+    try {
+      // 추가
+      for (const item of (r.adds || [])) {
+        try {
+          const cleaned = { ...item };
+          delete cleaned._sourceRow;
+          delete cleaned.propName;
+          
+          if (r.type === 'properties') {
+            await store.upsertProp(cleaned);
+          } else if (r.type === 'bookings') {
+            await store.addBooking(cleaned);
+          } else if (r.type === 'expenses') {
+            await store.addExpense(cleaned);
+          }
+          added++;
+        } catch (e) {
+          console.error('Add failed:', e);
+          failed++;
+        }
+      }
+
+      // 수정
+      for (const item of (r.updates || [])) {
+        try {
+          const cleaned = { ...item };
+          delete cleaned._sourceRow;
+          delete cleaned._changes;
+          delete cleaned.propName;
+
+          if (r.type === 'properties') {
+            await store.upsertProp(cleaned);
+          } else if (r.type === 'bookings') {
+            await store.updateBooking(item.id, cleaned);
+          } else if (r.type === 'expenses') {
+            // expenses는 업데이트 메소드가 없으므로 삭제 후 추가
+            await store.delExpense(item.id);
+            await store.addExpense(cleaned);
+          }
+          updated++;
+        } catch (e) {
+          console.error('Update failed:', e);
+          failed++;
+        }
+      }
+
+      await store.addLog(`🤖 AI 동기화: ${r.typeLabel} ${added}건 추가, ${updated}건 수정${failed?`, ${failed}건 실패`:''}`, true);
+      
+      toast(`✅ 적용 완료! 추가 ${added}건, 수정 ${updated}건${failed?`, 실패 ${failed}건`:''}`, 'success');
+      this._smartSyncResult = null;
+      
+      document.getElementById('syncResult').innerHTML = `
+        <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-8 rounded-2xl text-center">
+          <i data-lucide="check-circle" class="w-16 h-16 mx-auto mb-4"></i>
+          <h3 class="text-3xl font-black mb-2">✅ 동기화 완료!</h3>
+          <div class="grid grid-cols-3 gap-4 mt-6 max-w-md mx-auto">
+            <div class="bg-white/10 p-4 rounded-xl"><p class="text-xs opacity-80">추가</p><p class="text-3xl font-black">${added}</p></div>
+            <div class="bg-white/10 p-4 rounded-xl"><p class="text-xs opacity-80">수정</p><p class="text-3xl font-black">${updated}</p></div>
+            <div class="bg-white/10 p-4 rounded-xl"><p class="text-xs opacity-80">실패</p><p class="text-3xl font-black">${failed}</p></div>
+          </div>
+          <button onclick="router.adminTab='${r.type === 'properties' ? 'props' : r.type}';router.renderAdminNav();router.renderAdminTab()" class="mt-6 bg-white text-green-600 px-6 py-3 rounded-xl font-black">${r.typeLabel} 보러가기 →</button>
+        </div>
+      `;
+      lucide.createIcons();
+    } catch (e) {
+      toast('적용 실패: ' + e.message, 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  cancelSmartSync() {
+    this._smartSyncResult = null;
+    document.getElementById('syncResult').innerHTML = '';
+    toast('취소됨', 'info');
   }
     // ===== [v3.2] Google Sheets URL 파서 =====
   _parseGSheetUrl(url) {

@@ -3,13 +3,6 @@ window.API = {
   getToken() { return sessionStorage.getItem('qj_token'); },
   setToken(t) { if (t) sessionStorage.setItem('qj_token', t); else sessionStorage.removeItem('qj_token'); },
 
-    async aiMap(type, columns, sampleRows) {
-    return this.request('/ai-map', {
-      method: 'POST',
-      body: JSON.stringify({ type, columns, sampleRows })
-    });
-  },
-  
   async request(path, options={}) {
     const token = this.getToken();
     const headers = {
@@ -35,7 +28,6 @@ window.API = {
     }
   },
 
-  // 🆕 인증 없이 공개 GET (로그인 화면 커스터마이징용)
   async publicGet(collection) {
     try {
       const res = await fetch(`${this.baseURL}/data?collection=${collection}`);
@@ -57,6 +49,21 @@ window.API = {
   async create(c, d) { return this.request(`/data?collection=${c}`, { method:'POST', body: JSON.stringify(d) }); },
   async update(c, id, d) { return this.request(`/data?collection=${c}&id=${id}`, { method:'PUT', body: JSON.stringify(d) }); },
   async delete(c, id) { return this.request(`/data?collection=${c}&id=${id}`, { method:'DELETE' }); },
-  async setAll(c, d) { return this.request(`/data?collection=${c}&bulk=1`, { method:'PUT', body: JSON.stringify({ data: d }) }); }
-  
+  async setAll(c, d) { return this.request(`/data?collection=${c}&bulk=1`, { method:'PUT', body: JSON.stringify({ data: d }) }); },
+
+  // 🆕 [v3.3] AI 매핑 (단순)
+  async aiMap(type, columns, sampleRows) {
+    return this.request('/ai-map', {
+      method: 'POST',
+      body: JSON.stringify({ type, columns, sampleRows })
+    });
+  },
+
+  // 🆕 [v3.3] AI 스마트 동기화 (URL → 분석 → 변환 → 비교 통합)
+  async gsheetSmart(url, existingProps, existingBookings, existingExpenses) {
+    return this.request('/gsheet-smart', {
+      method: 'POST',
+      body: JSON.stringify({ url, existingProps, existingBookings, existingExpenses })
+    });
+  }
 };
