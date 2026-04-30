@@ -138,77 +138,66 @@ async function aiAnalyze(columns, sampleRows, existingPropNames) {
     }).join('\n');
     return `${k} - ${v.label}: ${v.description}\n  필드:\n${fieldsDesc}`;
   }).join('\n\n');
+
   const prompt = '당신은 부동산 관리 시스템(QJ-PMS)의 데이터 통합 AI입니다.\n\n'
     + '【플랫폼 데이터 구조】\n' + schemaDesc
-    + '\n\n【기존 매물 목록】\n' 
-    + (existingPropNames.slice(0, 50).join(', ') || '(아직 매물 없음)')
-    + '\n\n【분석 대상 시트】\n'
-    + `컬럼 (${columns.length}개):\n` 
-    + columns.map((c, i) => `${i + 1}. "${c}"`).join('\n')
-    + '\n\n샘플 데이터:\n' + JSON.stringify(sampleRows, null, 2)
-    + '\n\n【지시사항】\n1. properties/bookings/expenses 중 적합한 타입 선택\n'
-    + '2. 컬럼명+샘플 분석\n3. 매칭불가는 null\n4. 신뢰도(high/medium/low)\n5. JSON으로만 답변'
-    + '\n\n【응답 형식】\n{"detectedType":"...","confidence":"...","reason":"...","mapping":{}}';
-  let lastError = null;
+    + '\n\n【기존 매물】\n' + (existingPropNames.slice(0, 30).join(', ') || '(없음)')
+    + '\n\n【시트 컬럼】\n' + columns.map((c, i) => `${i + 1}. "${c}"`).join('\n')
+    + '\n\n【샘플】\n' + JSON.stringify(sampleRows, null, 2)
+    + '\n\n【지시】\n1. properties/bookings/expenses 중 선택\n2. 컬럼+샘플 분석\n3. 매칭불가는 null\n4. 신뢰도(high/medium/low)\n5. JSON만 답변'
+    + '\n\n【형식】\n{"detectedType":"...","confidence":"...","reason":"...","mapping":{}}';
 
-  for (const { name, timeout } of models) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        console.log(`🤖 ${name} 시도 ${attempt}/2 (${timeout}ms)`);
-        const startTime = Date.now();
+  const modelName = 'gemini-2.5-flash';
+  const timeout = 15000;
 
-        const url = 'https://generativelanguage.googleapis.com/v1beta/models/' 
-          + name + ':generateContent?key=' + GEMINI_API_KEY;
+  console.log(`🤖 ${modelName} (${timeout}ms, 재시도없음)`);
+  const startTime = Date.now();
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-                const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1,
-              responseMimeType: "application/json",
-              maxOutputTokens: 2048
-            }
-          }),
-          signal: controller.signal
-        });
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-        clearTimeout(timeoutId);
-        const elapsed = Date.now() - startTime;
-
-        if (res.ok) {
-          const data = await res.json();
-          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!text) throw new Error("AI 응답이 비어있습니다");
-          console.log(`✅ ${name} 성공 (${elapsed}ms)`);
-          return JSON.parse(text);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
+          maxOutputTokens: 1024
         }
-                const errText = await res.text();
-        const is503 = res.status === 503;
+      }),
+      signal: controller.signal
+    });
 
-        if (is503 && attempt < 2) {
-          console.warn(`⚠️ ${name} 503 - 1.5초 후 재시도`);
-          await new Promise(r => setTimeout(r, 1500));
-          continue;
-        }
+    clearTimeout(timeoutId);
+    const elapsed = Date.now() - startTime;
 
-        lastError = `${name} (${res.status}): ${errText.slice(0, 100)}`;
-        break;
-      } catch (e) {
-        const errMsg = e.name === 'AbortError' ? `타임아웃` : e.message;
-        lastError = `${name}: ${errMsg}`;
-        break;
-      }
+    if (!res.ok) {
+      const errText = await res.text();
+      const status = res.status;
+      let userMsg;
+      if (status === 503) userMsg = 'Google AI 서버 과부하입니다. 30초~1분 후 다시 시도해주세요.';
+      else if (status === 429) userMsg = 'API 호출 한도 초과. 잠시 후 다시 시도해주세요.';
+      else userMsg = `AI 응답 오류 (${status}): ${errText.slice(0, 100)}`;
+      throw new Error(userMsg);
     }
-  }
 
-  const userMsg = lastError?.includes('503')
-    ? 'Google AI 과부하. 30초 후 재시도해주세요.'
-    : `AI 분석 실패: ${lastError}`;
-  throw new Error(userMsg);
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("AI 응답이 비어있습니다");
+    
+    console.log(`✅ AI 성공 (${elapsed}ms)`);
+    return JSON.parse(text);
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      throw new Error(`AI 응답 시간 초과 (15초). 시트가 너무 크거나 서버가 느립니다. 다시 시도해주세요.`);
+    }
+    throw e;
+  }
 }
   const models = [
     { name: 'gemini-2.5-flash', timeout: 18000 },
