@@ -19,3 +19,12 @@
 
 [functions]
   node_bundler = "esbuild"
+
+[functions."gsheet-smart"]
+  timeout = 26
+
+[functions."gsheet-discover"]
+  timeout = 20
+
+[functions."ai-map"]
+  timeout = 20

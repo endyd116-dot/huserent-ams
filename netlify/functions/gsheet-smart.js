@@ -169,63 +169,53 @@ ${JSON.stringify(sampleRows, null, 2)}
   }
 }`;
 
-  const models = [
-    'gemini-2.5-flash',
-    'gemini-flash-latest',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-pro'
-  ];
-
+  // 한 번에 1개 모델만 시도 (타임아웃 방지)
+  const models = ['gemini-2.5-flash', 'gemini-flash-latest'];
   let lastError = null;
 
   for (const model of models) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { 
-              temperature: 0.1, 
-              responseMimeType: "application/json",
-              maxOutputTokens: 2048
-            }
-          })
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!text) throw new Error("AI 응답이 비어있습니다");
-          console.log(`✅ AI 분석 성공: ${model}`);
-          return JSON.parse(text);
-        }
-
-        const errText = await res.text();
-        lastError = `${model} (${res.status}): ${errText.slice(0, 200)}`;
-
-        if (res.status === 429 || res.status === 503) {
-          if (attempt < 2) {
-            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-            continue;
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      
+      // 6초 타임아웃 설정
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { 
+            temperature: 0.1, 
+            responseMimeType: "application/json",
+            maxOutputTokens: 2048
           }
-          break;
-        }
-        break;
-      } catch (e) {
-        lastError = `${model}: ${e.message}`;
-        if (attempt < 2) {
-          await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        }
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error("AI 응답이 비어있습니다");
+        console.log(`✅ AI 분석 성공: ${model}`);
+        return JSON.parse(text);
       }
+
+      const errText = await res.text();
+      lastError = `${model} (${res.status}): ${errText.slice(0, 150)}`;
+      console.warn(lastError);
+    } catch (e) {
+      lastError = `${model}: ${e.message}`;
+      console.warn(lastError);
     }
   }
 
-  throw new Error(`모든 AI 모델 한도 초과 또는 오류.\n${lastError}\n\n💡 5-10분 후 재시도하거나 https://aistudio.google.com 에서 quota 확인하세요.`);
+  throw new Error(`AI 분석 실패: ${lastError}`);
 }
-
 function normalizeDate(s) {
   if (!s) return '';
   s = String(s).trim();
