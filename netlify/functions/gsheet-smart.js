@@ -138,38 +138,31 @@ async function aiAnalyze(columns, sampleRows, existingPropNames) {
     }).join('\n');
     return `${k} - ${v.label}: ${v.description}\n  필드:\n${fieldsDesc}`;
   }).join('\n\n');
-
   const prompt = '당신은 부동산 관리 시스템(QJ-PMS)의 데이터 통합 AI입니다.\n\n'
     + '【플랫폼 데이터 구조】\n' + schemaDesc
-    + '\n\n【기존 매물 목록】\n' + (existingPropNames.slice(0, 50).join(', ') || '(아직 매물 없음)')
+    + '\n\n【기존 매물 목록】\n' 
+    + (existingPropNames.slice(0, 50).join(', ') || '(아직 매물 없음)')
     + '\n\n【분석 대상 시트】\n'
-    + `컬럼 (${columns.length}개):\n` + columns.map((c, i) => `${i + 1}. "${c}"`).join('\n')
+    + `컬럼 (${columns.length}개):\n` 
+    + columns.map((c, i) => `${i + 1}. "${c}"`).join('\n')
     + '\n\n샘플 데이터:\n' + JSON.stringify(sampleRows, null, 2)
-    + '\n\n【지시사항】\n1. properties/bookings/expenses 중 적합한 타입 선택\n2. 컬럼명+샘플 분석\n3. 매칭불가는 null\n4. 신뢰도(high/medium/low)\n5. JSON으로만 답변'
+    + '\n\n【지시사항】\n1. properties/bookings/expenses 중 적합한 타입 선택\n'
+    + '2. 컬럼명+샘플 분석\n3. 매칭불가는 null\n4. 신뢰도(high/medium/low)\n5. JSON으로만 답변'
     + '\n\n【응답 형식】\n{"detectedType":"...","confidence":"...","reason":"...","mapping":{}}';
-
-  // 🆕 다중 모델 + 재시도 로직
-  const models = [
-    { name: 'gemini-2.5-flash', timeout: 18000 },
-    { name: 'gemini-flash-latest', timeout: 12000 },
-    { name: 'gemini-2.0-flash-exp', timeout: 8000 }
-  ];
-
   let lastError = null;
 
   for (const { name, timeout } of models) {
-    // 모델당 최대 3회 재시도
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        console.log(`🤖 ${name} 시도 ${attempt}/3 (timeout: ${timeout}ms)`);
+        console.log(`🤖 ${name} 시도 ${attempt}/2 (${timeout}ms)`);
         const startTime = Date.now();
 
-        const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + name + ':generateContent?key=' + GEMINI_API_KEY;
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/' 
+          + name + ':generateContent?key=' + GEMINI_API_KEY;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        const res = await fetch(url, {
+                const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -190,44 +183,37 @@ async function aiAnalyze(columns, sampleRows, existingPropNames) {
           const data = await res.json();
           const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
           if (!text) throw new Error("AI 응답이 비어있습니다");
-          console.log(`✅ ${name} 성공 (${elapsed}ms, 시도 ${attempt})`);
+          console.log(`✅ ${name} 성공 (${elapsed}ms)`);
           return JSON.parse(text);
         }
-
-        const errText = await res.text();
+                const errText = await res.text();
         const is503 = res.status === 503;
-        const is429 = res.status === 429;
 
-        if ((is503 || is429) && attempt < 3) {
-          // 503/429는 재시도 (지수 백오프: 1초, 3초)
-          const waitMs = attempt * 1500;
-          console.warn(`⚠️ ${name} ${res.status} - ${waitMs}ms 후 재시도 (${attempt}/3)`);
-          await new Promise(r => setTimeout(r, waitMs));
+        if (is503 && attempt < 2) {
+          console.warn(`⚠️ ${name} 503 - 1.5초 후 재시도`);
+          await new Promise(r => setTimeout(r, 1500));
           continue;
         }
 
-        lastError = `${name} (${res.status}): ${errText.slice(0, 150)}`;
-        console.warn(`⚠️ ${lastError}`);
-        break; // 다음 모델로
+        lastError = `${name} (${res.status}): ${errText.slice(0, 100)}`;
+        break;
       } catch (e) {
-        const errMsg = e.name === 'AbortError' ? `타임아웃 (${timeout}ms)` : e.message;
+        const errMsg = e.name === 'AbortError' ? `타임아웃` : e.message;
         lastError = `${name}: ${errMsg}`;
-        console.warn(`⚠️ ${lastError}`);
-        if (attempt < 3 && e.name !== 'AbortError') {
-          await new Promise(r => setTimeout(r, attempt * 1000));
-          continue;
-        }
         break;
       }
     }
   }
 
-  // 모든 모델/시도 실패
-  const userMsg = lastError?.includes('503') 
-    ? 'Google AI 서버가 일시적으로 과부하 상태입니다. 30초~1분 후 다시 시도해주세요.'
+  const userMsg = lastError?.includes('503')
+    ? 'Google AI 과부하. 30초 후 재시도해주세요.'
     : `AI 분석 실패: ${lastError}`;
   throw new Error(userMsg);
 }
+  const models = [
+    { name: 'gemini-2.5-flash', timeout: 18000 },
+    { name: 'gemini-flash-latest', timeout: 6000 }
+  ];
 function normalizeDate(s) {
   if (!s) return '';
   s = String(s).trim();
