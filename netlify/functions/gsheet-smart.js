@@ -70,9 +70,10 @@ const PLATFORM_SCHEMA = {
 };
 
 // CSV 파싱
+// 스마트 CSV 파싱 (빈 행/제목 행 자동 스킵 + 빈 컬럼명 처리)
 function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return [];
+  const allLines = text.split(/\r?\n/);
+
   const parseLine = (line) => {
     const result = [];
     let current = '', inQuotes = false;
@@ -88,13 +89,42 @@ function parseCSV(text) {
     result.push(current.trim());
     return result;
   };
-  const headers = parseLine(lines[0]);
-  return lines.slice(1).map(line => {
-    const values = parseLine(line);
+
+  // 모든 행 파싱
+  const allParsed = allLines.map(parseLine);
+
+  // 가장 많은 비어있지 않은 컬럼을 가진 행을 찾기 (헤더 후보)
+  let headerIdx = 0;
+  let maxNonEmpty = 0;
+  for (let i = 0; i < Math.min(10, allParsed.length); i++) {
+    const nonEmpty = allParsed[i].filter(c => c && c.trim()).length;
+    if (nonEmpty > maxNonEmpty) {
+      maxNonEmpty = nonEmpty;
+      headerIdx = i;
+    }
+  }
+
+  if (maxNonEmpty < 2) return { rows: [], headers: [], headerIdx: -1 };
+
+  // 헤더 정리 (빈 컬럼명은 자동 생성)
+  const rawHeaders = allParsed[headerIdx];
+  const headers = rawHeaders.map((h, i) => {
+    const cleaned = (h || '').trim();
+    return cleaned || `컬럼${i+1}`;
+  });
+
+  // 데이터 행 (헤더 다음부터)
+  const dataLines = allParsed.slice(headerIdx + 1).filter(values => 
+    values.some(v => v && v.trim())  // 완전히 빈 행 제외
+  );
+
+  const rows = dataLines.map(values => {
     const obj = {};
     headers.forEach((h, i) => obj[h] = values[i] || '');
     return obj;
   });
+
+  return { rows, headers, headerIdx };
 }
 
 function buildCsvUrl(url) {
@@ -383,9 +413,21 @@ export default async (req) => {
       return jsonResponse({ error: '시트가 비공개입니다. "링크가 있는 모든 사용자: 뷰어"로 공유 설정 필요' }, 400);
     }
 
-    const rows = parseCSV(csvText);
-    if (!rows.length) return jsonResponse({ error: '시트에 데이터가 없습니다' }, 400);
-    log.push({ step: 2, msg: `✅ 시트 데이터 로드 완료 (${rows.length}행, ${Object.keys(rows[0]).length}열)`, time: Date.now()-t0 });
+        // 3. CSV 파싱 (스마트 헤더 감지)
+    const parsed = parseCSV(csvText);
+    if (!parsed.rows.length) {
+      return jsonResponse({ 
+        error: '시트에서 유효한 데이터를 찾을 수 없습니다',
+        hint: '시트에 컬럼명(헤더 행)과 데이터가 모두 있는지 확인하세요',
+        debug: {
+          totalLines: csvText.split('\n').length,
+          first200chars: csvText.slice(0, 200)
+        }
+      }, 400);
+    }
+
+    const rows = parsed.rows;
+    log.push({ step: 2, msg: `✅ 시트 데이터 로드 완료 (헤더: ${parsed.headerIdx+1}행, 데이터: ${rows.length}행, 컬럼: ${parsed.headers.length}개)`, time: Date.now()-t0 });
 
     // ===== 3️⃣ AI 외부 분석 =====
     log.push({ step: 3, msg: '🤖 AI가 데이터 타입과 매핑 분석 중... (Gemini 2.0 Flash)', time: Date.now()-t0 });
