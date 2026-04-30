@@ -4298,31 +4298,41 @@ class Router {
   }
 
   // ===== [v3.2] 컬럼 매핑 UI 렌더링 =====
-    _renderGSheetMapping() {
+      _renderGSheetMapping() {
     const fieldLabels = {
-      properties: { name:'숙소명*', group:'그룹', location:'위치', address:'주소', price:'1박가격*', cost:'원가', manager:'담당자(ID)' },
+      properties: { name:'숙소명*', group:'그룹', location:'위치', address:'주소', price:'1박가격*', cost:'원가', manager:'담당자' },
       bookings: { propName:'숙소명*', guest:'예약자*', contact:'연락처', checkIn:'체크인*', checkOut:'체크아웃*', price:'가격*', platform:'플랫폼', people:'인원', nationality:'국적' },
       expenses: { date:'날짜*', propName:'숙소*', majorCat:'대분류', category:'소분류*', amount:'금액*', memo:'메모' }
     };
     const labels = fieldLabels[this._gsType] || {};
     const fields = Object.keys(labels);
     const cols = this._gsColumns;
+    const rowCount = this._gsRows.length;
 
     let html = `
-      <div class="bg-white border-2 rounded-2xl p-6 mb-4">
-        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h3 class="font-black flex items-center gap-2"><i data-lucide="columns" class="w-5 h-5"></i>2️⃣ 컬럼 매핑</h3>
-          <button onclick="router.aiAutoMap()" class="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-xl font-black text-sm flex items-center gap-2 hover:shadow-lg transition">
-            <i data-lucide="sparkles" class="w-4 h-4"></i>🤖 Gemini AI 자동 매핑
+      <div class="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200 rounded-2xl p-4 mb-4">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+          <div class="flex items-center gap-2">
+            <i data-lucide="sparkles" class="w-5 h-5 text-purple-600"></i>
+            <span class="font-black text-purple-700">🤖 Gemini AI 자동 매핑</span>
+          </div>
+          <button onclick="router.aiAutoMap()" class="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-xl font-black text-xs hover:shadow-lg transition flex items-center gap-1">
+            <i data-lucide="zap" class="w-3 h-3"></i>AI로 자동 매핑
           </button>
         </div>
-        <div class="bg-blue-50 p-3 rounded-xl mb-4 text-xs font-bold text-blue-700">💡 *표시는 필수 항목 · "사용안함" 선택 시 비워둠 · <b>AI 자동 매핑</b> 버튼으로 한번에 매칭 가능</div>
-        <div id="mappingGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <p class="text-xs text-purple-700 font-bold">컬럼명과 데이터 내용을 분석해 자동으로 매칭합니다 (1-2초 소요)</p>
+      </div>
+      
+      <div class="bg-white border rounded-2xl p-4 mb-3">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h4 class="font-black text-sm flex items-center gap-2"><i data-lucide="columns" class="w-4 h-4"></i>컬럼 매핑 (총 ${rowCount}행)</h4>
+          <span class="text-[10px] text-slate-400 font-bold">*표시 필수</span>
+        </div>
+        <div id="mappingGrid" class="grid grid-cols-1 md:grid-cols-2 gap-2">
           ${fields.map(f => `
-            <div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl">
-              <span class="font-black text-sm w-32 flex-shrink-0">${labels[f]}</span>
-              <i data-lucide="arrow-right" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
-              <select data-mapfield="${f}" class="flex-1 p-2 border rounded-lg text-sm font-bold">
+            <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-lg">
+              <span class="font-black text-xs w-20 flex-shrink-0">${labels[f]}</span>
+              <select data-mapfield="${f}" class="flex-1 p-2 border rounded text-xs font-bold min-w-0">
                 <option value="">— 사용안함 —</option>
                 ${cols.map(c => `<option value="${c}" ${this._gsMapping[f]===c?'selected':''}>${c}</option>`).join('')}
               </select>
@@ -4330,35 +4340,34 @@ class Router {
           `).join('')}
         </div>
       </div>
-
-      <div class="bg-white border-2 rounded-2xl p-6 mb-4">
-        <h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="eye" class="w-5 h-5"></i>3️⃣ 미리보기 (처음 5행)</h3>
-        <div class="overflow-x-auto">
-          <table class="w-full text-xs">
-            <thead class="bg-slate-100 font-black"><tr>${cols.map(c => `<th class="px-3 py-2 text-left whitespace-nowrap">${c}</th>`).join('')}</tr></thead>
-            <tbody class="divide-y">${this._gsRows.slice(0,5).map(r => `<tr>${cols.map(c => `<td class="px-3 py-2 truncate max-w-[150px]">${r[c]||'-'}</td>`).join('')}</tr>`).join('')}</tbody>
+      
+      <details class="bg-white border rounded-2xl mb-3">
+        <summary class="p-4 cursor-pointer font-black text-sm flex items-center gap-2"><i data-lucide="eye" class="w-4 h-4"></i>📋 미리보기 (처음 3행) <span class="text-[10px] text-slate-400 font-bold ml-auto">▼ 클릭</span></summary>
+        <div class="px-4 pb-4 overflow-x-auto">
+          <table class="w-full text-[10px] border-collapse">
+            <thead class="bg-slate-100"><tr>${cols.map(c => `<th class="px-2 py-1.5 text-left font-black border whitespace-nowrap">${c}</th>`).join('')}</tr></thead>
+            <tbody>${this._gsRows.slice(0,3).map(r => `<tr>${cols.map(c => `<td class="px-2 py-1.5 border truncate max-w-[120px]">${r[c]||'-'}</td>`).join('')}</tr>`).join('')}</tbody>
           </table>
         </div>
-        <p class="text-xs text-slate-400 font-bold mt-3">총 <b class="text-blue-600">${this._gsRows.length}행</b></p>
-      </div>
-
-      <div class="bg-white border-2 rounded-2xl p-6 mb-4">
-        <h3 class="font-black mb-4 flex items-center gap-2"><i data-lucide="settings" class="w-5 h-5"></i>4️⃣ 가져오기 옵션</h3>
-        <div class="space-y-2">
-          <label class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer">
+      </details>
+      
+      <div class="bg-white border rounded-2xl p-4 mb-3">
+        <p class="text-xs font-black text-slate-500 uppercase mb-2">⚙️ 옵션</p>
+        <div class="flex gap-2 flex-wrap">
+          <label class="flex items-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-blue-50 rounded-lg cursor-pointer text-xs font-bold flex-1">
             <input type="radio" name="gsMode" value="add" checked>
-            <span class="text-sm font-bold">➕ <b>추가만</b>: 신규 항목만 등록 (중복 건너뜀)</span>
+            <span>➕ 추가만 (중복제외)</span>
           </label>
-          <label class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer">
+          <label class="flex items-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-blue-50 rounded-lg cursor-pointer text-xs font-bold flex-1">
             <input type="radio" name="gsMode" value="all">
-            <span class="text-sm font-bold">📥 <b>전체 등록</b>: 중복 검사 없이 모두 추가</span>
+            <span>📥 전체 등록</span>
           </label>
         </div>
       </div>
-
-      <div class="flex gap-3">
-        <button onclick="router.previewGSheetImport()" class="flex-1 bg-amber-500 text-white py-4 rounded-xl font-black uppercase">🔍 변환 미리보기</button>
-        <button onclick="router.executeGSheetImport()" class="flex-1 bg-green-600 text-white py-4 rounded-xl font-black uppercase">✅ 가져오기 실행</button>
+      
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="router.previewGSheetImport()" class="bg-amber-500 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1"><i data-lucide="search" class="w-4 h-4"></i>미리보기</button>
+        <button onclick="router.executeGSheetImport()" class="bg-green-600 text-white py-3 rounded-xl font-black text-sm flex items-center justify-center gap-1"><i data-lucide="check" class="w-4 h-4"></i>실행</button>
       </div>
     `;
 
