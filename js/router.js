@@ -4228,7 +4228,7 @@ class Router {
   }
 
   // ===== [v3.3] AI 분석 결과 렌더링 =====
-  _renderSmartSyncResult(r) {
+    _renderSmartSyncResult(r) {
     const resultEl = document.getElementById('syncResult');
     const confColor = { high: 'green', medium: 'amber', low: 'red' }[r.confidence] || 'slate';
     const confLabel = { high: '높음 ✅', medium: '중간 ⚠️', low: '낮음 ❓' }[r.confidence] || r.confidence;
@@ -4279,39 +4279,51 @@ class Router {
       </div>
     `;
 
-    // 추가될 항목 미리보기
+    // 추가될 항목 (편집/삭제 가능)
     if (r.adds && r.adds.length) {
       html += `
         <div class="bg-white border-2 border-green-200 rounded-2xl mb-4 overflow-hidden">
-          <div class="bg-green-50 p-4 border-b border-green-200">
-            <h4 class="font-black text-green-700 flex items-center gap-2"><i data-lucide="plus-circle" class="w-5 h-5"></i>➕ 신규 추가될 항목 (${r.adds.length}건)</h4>
+          <div class="bg-green-50 p-4 border-b border-green-200 flex items-center justify-between flex-wrap gap-2">
+            <h4 class="font-black text-green-700 flex items-center gap-2"><i data-lucide="plus-circle" class="w-5 h-5"></i>➕ 신규 추가될 항목 (<span id="addCount">${r.adds.length}</span>건)</h4>
+            <p class="text-xs text-green-600 font-bold">💡 항목 클릭 → 편집 / 🗑️ → 제외</p>
           </div>
-          <div class="max-h-72 overflow-y-auto scrollbar">
+          <div class="max-h-96 overflow-y-auto scrollbar">
             <table class="w-full text-xs">
               <thead class="bg-slate-50 sticky top-0">
-                <tr>${this._getDisplayFields(r.type).map(f => `<th class="px-3 py-2 text-left font-black text-slate-500 uppercase text-[10px]">${f.label}</th>`).join('')}</tr>
+                <tr>${this._getDisplayFields(r.type).map(f => `<th class="px-3 py-2 text-left font-black text-slate-500 uppercase text-[10px]">${f.label}</th>`).join('')}<th class="px-3 py-2 w-20"></th></tr>
               </thead>
-              <tbody class="divide-y">
-                ${r.adds.slice(0, 100).map(item => `<tr class="hover:bg-green-50/50">${this._getDisplayFields(r.type).map(f => `<td class="px-3 py-2 truncate max-w-[200px]">${this._formatValue(item[f.key])}</td>`).join('')}</tr>`).join('')}
+              <tbody id="addsTable" class="divide-y">
+                ${r.adds.map((item, i) => `<tr data-add-idx="${i}" class="hover:bg-green-50/50">
+                  ${this._getDisplayFields(r.type).map(f => `<td class="px-3 py-2 truncate max-w-[200px] cursor-pointer" onclick="router.editAddItem(${i})">${this._formatValue(item[f.key])}</td>`).join('')}
+                  <td class="px-3 py-2 text-right">
+                    <button onclick="router.editAddItem(${i})" class="text-blue-500 hover:bg-blue-100 p-1 rounded" title="편집"><i data-lucide="edit-3" class="w-3 h-3"></i></button>
+                    <button onclick="router.removeAddItem(${i})" class="text-red-500 hover:bg-red-100 p-1 rounded" title="제외"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+                  </td>
+                </tr>`).join('')}
               </tbody>
             </table>
-            ${r.adds.length > 100 ? `<p class="p-3 text-center text-xs text-slate-400 font-bold">+ 나머지 ${r.adds.length - 100}건은 적용 시 함께 추가됩니다</p>` : ''}
           </div>
         </div>
       `;
     }
 
-    // 수정될 항목 (변경 내역 표시)
+    // 수정될 항목 (편집/삭제 가능)
     if (r.updates && r.updates.length) {
       html += `
         <div class="bg-white border-2 border-amber-200 rounded-2xl mb-4 overflow-hidden">
-          <div class="bg-amber-50 p-4 border-b border-amber-200">
-            <h4 class="font-black text-amber-700 flex items-center gap-2"><i data-lucide="edit-3" class="w-5 h-5"></i>✏️ 수정될 항목 (${r.updates.length}건)</h4>
-            <p class="text-xs text-amber-600 font-bold mt-1">변경된 필드만 자세히 표시됩니다</p>
+          <div class="bg-amber-50 p-4 border-b border-amber-200 flex items-center justify-between flex-wrap gap-2">
+            <h4 class="font-black text-amber-700 flex items-center gap-2"><i data-lucide="edit-3" class="w-5 h-5"></i>✏️ 수정될 항목 (<span id="updateCount">${r.updates.length}</span>건)</h4>
+            <p class="text-xs text-amber-600 font-bold">💡 항목 클릭 → 편집 / 🗑️ → 제외</p>
           </div>
-          <div class="max-h-96 overflow-y-auto scrollbar p-3 space-y-2">
-            ${r.updates.slice(0, 50).map((item, i) => `<div class="bg-amber-50 rounded-xl p-3 border border-amber-200">
-              <p class="font-black text-sm mb-2">${this._getItemTitle(item, r.type)} <span class="text-[10px] text-slate-500">(${i+1}/${r.updates.length})</span></p>
+          <div class="max-h-96 overflow-y-auto scrollbar p-3 space-y-2" id="updatesTable">
+            ${r.updates.map((item, i) => `<div data-update-idx="${i}" class="bg-amber-50 rounded-xl p-3 border border-amber-200 hover:border-amber-400 transition">
+              <div class="flex items-center justify-between mb-2 gap-2">
+                <p class="font-black text-sm flex-1 cursor-pointer hover:text-blue-600" onclick="router.editUpdateItem(${i})">${this._getItemTitle(item, r.type)}</p>
+                <div class="flex gap-1 flex-shrink-0">
+                  <button onclick="router.editUpdateItem(${i})" class="text-blue-500 hover:bg-blue-100 p-1.5 rounded" title="편집"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                  <button onclick="router.removeUpdateItem(${i})" class="text-red-500 hover:bg-red-100 p-1.5 rounded" title="제외"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                </div>
+              </div>
               <div class="space-y-1 text-xs">
                 ${(item._changes||[]).map(c => `<div class="flex items-center gap-2 bg-white p-2 rounded">
                   <span class="font-black text-slate-700 w-20">${c.field}:</span>
@@ -4321,18 +4333,17 @@ class Router {
                 </div>`).join('')}
               </div>
             </div>`).join('')}
-            ${r.updates.length > 50 ? `<p class="p-3 text-center text-xs text-slate-400 font-bold">+ 나머지 ${r.updates.length - 50}건은 적용 시 함께 수정됩니다</p>` : ''}
           </div>
         </div>
       `;
     }
 
-    // 적용 / 취소 버튼
+    // 적용/취소 버튼
     if ((r.adds && r.adds.length) || (r.updates && r.updates.length)) {
       html += `
         <div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-5 rounded-2xl">
           <p class="font-black text-lg mb-2">🚀 변경사항 적용 준비 완료</p>
-          <p class="text-sm opacity-90 mb-4">총 <b>${r.stats.addCount}건 추가</b> + <b>${r.stats.updateCount}건 수정</b>이 적용됩니다</p>
+          <p class="text-sm opacity-90 mb-4">총 <b id="finalAddCount">${r.stats.addCount}</b>건 추가 + <b id="finalUpdateCount">${r.stats.updateCount}</b>건 수정이 적용됩니다</p>
           <div class="flex gap-2">
             <button onclick="router.applySmartSync()" class="flex-1 bg-white text-purple-700 py-3 rounded-xl font-black uppercase hover:shadow-xl transition">✅ 적용하기</button>
             <button onclick="router.cancelSmartSync()" class="px-6 bg-white/20 backdrop-blur text-white py-3 rounded-xl font-black uppercase">취소</button>
