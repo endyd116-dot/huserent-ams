@@ -140,7 +140,7 @@ async function aiAnalyze(columns, sampleRows, existingPropNames) {
     return `${k} - ${v.label}: ${v.description}\n  필드:\n${fieldsDesc}`;
   }).join('\n\n');
 
-  // ---------- 2) 프롬프트 분할 조립 (긴 문자열 분리) ----------
+  // ---------- 2) 프롬프트 분할 조립 ----------
   const promptHeader = '당신은 부동산 관리 시스템(QJ-PMS)의 데이터 통합 AI입니다.\n\n'
     + '【플랫폼 데이터 구조】\n'
     + schemaDesc
@@ -172,65 +172,57 @@ async function aiAnalyze(columns, sampleRows, existingPropNames) {
 
   const prompt = promptHeader + promptSheet + promptInstructions + promptFormat;
 
-  // ---------- 3) 모델 폴백 시도 ----------
-  const models = [
-    { name: 'gemini-2.5-flash', timeout: 18000 },
-    { name: 'gemini-flash-latest', timeout: 6000 }
-  ];
+  // ---------- 3) 단일 모델 + 충분한 타임아웃 (22초) ----------
+  const modelName = 'gemini-2.5-flash';
+  const timeout = 22000; // 18초 → 22초로 증가
 
-  let lastError = null;
+  console.log(`🤖 AI 분석 시작: ${modelName} (timeout: ${timeout}ms)`);
+  const startTime = Date.now();
 
-  for (const { name, timeout } of models) {
-    try {
-      console.log(`🤖 AI 분석 시도: ${name} (timeout: ${timeout}ms)`);
-      const startTime = Date.now();
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+    + modelName
+    + ':generateContent?key='
+    + GEMINI_API_KEY;
 
-      const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-        + name
-        + ':generateContent?key='
-        + GEMINI_API_KEY;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
+          maxOutputTokens: 2048
+        }
+      }),
+      signal: controller.signal
+    });
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: "application/json",
-            maxOutputTokens: 2048
-          }
-        }),
-        signal: controller.signal
-      });
+    clearTimeout(timeoutId);
+    const elapsed = Date.now() - startTime;
 
-      clearTimeout(timeoutId);
-      const elapsed = Date.now() - startTime;
-
-      if (res.ok) {
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error("AI 응답이 비어있습니다");
-        console.log(`✅ AI 분석 성공: ${name} (${elapsed}ms)`);
-        return JSON.parse(text);
-      }
-
+    if (!res.ok) {
       const errText = await res.text();
-      lastError = `${name} (${res.status}): ${errText.slice(0, 150)}`;
-      console.warn(`⚠️ ${lastError} (${elapsed}ms)`);
-    } catch (e) {
-      const errMsg = e.name === 'AbortError'
-        ? `타임아웃 (${timeout}ms 초과)`
-        : e.message;
-      lastError = `${name}: ${errMsg}`;
-      console.warn(`⚠️ ${lastError}`);
+      throw new Error(`AI 응답 오류 (${res.status}): ${errText.slice(0, 200)}`);
     }
-  }
 
-  throw new Error(`AI 분석 실패: ${lastError}`);
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("AI 응답이 비어있습니다");
+
+    console.log(`✅ AI 분석 성공: ${modelName} (${elapsed}ms)`);
+    return JSON.parse(text);
+  } catch (e) {
+    clearTimeout(timeoutId);
+    const errMsg = e.name === 'AbortError'
+      ? `타임아웃 (${timeout/1000}초 초과) - 시트가 너무 크거나 AI 서버가 느립니다. 잠시 후 다시 시도해주세요`
+      : e.message;
+    throw new Error(`AI 분석 실패: ${errMsg}`);
+  }
 }
 function normalizeDate(s) {
   if (!s) return '';
@@ -380,14 +372,20 @@ export default async (req) => {
     
     for (const csvUrl of csvUrls) {
       try {
+        // 🆕 [수정] 각 endpoint당 6초 타임아웃 추가 (무한 대기 방지)
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 6000);
+        
         const sheetRes = await fetch(csvUrl, {
           redirect: 'follow',
+          signal: ctrl.signal,
           headers: { 
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'text/csv,text/plain,*/*',
             'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8'
           }
         });
+        clearTimeout(tid);
         lastStatus = sheetRes.status;
         
         if (sheetRes.ok) {
@@ -400,7 +398,9 @@ export default async (req) => {
           }
         }
       } catch (e) {
-        console.error(`Endpoint failed:`, e.message);
+        const errType = e.name === 'AbortError' ? '⏱️ 타임아웃(6초)' : e.message;
+        console.error(`Endpoint failed (${errType}):`, csvUrl);
+        log.push({ step: 2, msg: `⚠️ Endpoint 실패: ${errType}`, time: Date.now()-t0 });
       }
     }
 
