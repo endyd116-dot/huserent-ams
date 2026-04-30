@@ -4483,26 +4483,33 @@ class Router {
     toast('취소됨', 'info');
   }
     // ===== [v3.3] 전체 시트 분석 (모든 탭 자동 처리) =====
-  async runFullSync() {
+    async runFullSync() {
+    // ---------- 1) 입력 검증 ----------
     const url = document.getElementById('gsUrl').value.trim();
-    if (!url) { toast('Google Sheet URL을 입력하세요', 'error'); return; }
+    if (!url) {
+      toast('Google Sheet URL을 입력하세요', 'error');
+      return;
+    }
 
     localStorage.setItem('qj_gsheet_lastUrl', url);
     const resultEl = document.getElementById('syncResult');
 
-    resultEl.innerHTML = `
-      <div class="bg-white border-2 rounded-2xl p-6">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          <div>
-            <p class="font-black text-lg">🌐 전체 시트 분석 중...</p>
-            <p class="text-xs text-slate-500 font-bold mt-1">모든 탭을 자동으로 발견하고 처리합니다</p>
-          </div>
-        </div>
-        <div id="fullSyncLog" class="space-y-1 text-xs font-mono bg-slate-50 p-3 rounded-xl max-h-64 overflow-y-auto"></div>
-      </div>
-    `;
+    // ---------- 2) 로딩 UI 렌더 (HTML 분할 조립) ----------
+    const loadingHeader = '<div class="bg-white border-2 rounded-2xl p-6">'
+      + '<div class="flex items-center gap-3 mb-4">'
+      + '<div class="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>'
+      + '<div>'
+      + '<p class="font-black text-lg">🌐 전체 시트 분석 중...</p>'
+      + '<p class="text-xs text-slate-500 font-bold mt-1">모든 탭을 자동으로 발견하고 처리합니다</p>'
+      + '</div></div>';
 
+    const loadingBody = '<div id="fullSyncLog" '
+      + 'class="space-y-1 text-xs font-mono bg-slate-50 p-3 rounded-xl max-h-64 overflow-y-auto">'
+      + '</div></div>';
+
+    resultEl.innerHTML = loadingHeader + loadingBody;
+
+    // ---------- 3) 로그 헬퍼 ----------
     const logEl = document.getElementById('fullSyncLog');
     const addLog = (msg, color = 'slate-700') => {
       logEl.innerHTML += `<div class="text-${color}">${msg}</div>`;
@@ -4510,32 +4517,65 @@ class Router {
     };
 
     try {
-      // 1. 모든 탭 발견
+      // ---------- 4) 모든 탭 발견 (에러 진단 강화) ----------
       addLog('🔍 시트의 모든 탭 발견 중...', 'blue-600');
-      const discovery = await API.gsheetDiscover(url);
-      
-      if (!discovery.success || !discovery.sheets?.length) {
+
+      let discovery;
+      try {
+        discovery = await API.gsheetDiscover(url);
+      } catch (apiErr) {
+        addLog(`❌ API 호출 실패: ${apiErr.message}`, 'red-600');
+        addLog('💡 Netlify Function 배포 상태를 확인하세요', 'amber-600');
+        throw new Error('gsheet-discover 호출 실패: ' + apiErr.message);
+      }
+
+      if (!discovery) {
+        throw new Error('서버에서 빈 응답을 받았습니다 (Function 타임아웃 가능성)');
+      }
+
+      if (!discovery.success) {
+        addLog(`❌ ${discovery.error}`, 'red-600');
+        if (discovery.attempts) {
+          discovery.attempts.forEach(a => addLog(`  ▶ ${a}`, 'slate-500'));
+        }
+        if (discovery.hints) {
+          discovery.hints.forEach(h => addLog(`  💡 ${h}`, 'amber-600'));
+        }
         throw new Error(discovery.error || '탭을 발견할 수 없습니다');
+      }
+
+      if (!discovery.sheets || discovery.sheets.length === 0) {
+        throw new Error('탭을 0개 발견했습니다');
       }
 
       addLog(`✅ ${discovery.sheets.length}개 탭 발견 (${discovery.method})`, 'green-600');
       discovery.sheets.forEach((s, i) => {
-        addLog(`  ${i+1}. <b>${s.name}</b> (gid=${s.gid})`, 'slate-600');
+        addLog(`  ${i + 1}. <b>${s.name}</b> (gid=${s.gid})`, 'slate-600');
       });
 
-      // 2. 각 탭별로 분석
+      // ---------- 5) Base URL 파싱 ----------
       const baseUrlMatch = url.match(/^(https:\/\/docs\.google\.com\/spreadsheets\/d\/[^/]+)/);
       if (!baseUrlMatch) throw new Error('URL 파싱 실패');
       const baseUrl = baseUrlMatch[1];
 
+      // ---------- 6) 집계 결과 컨테이너 ----------
       const tabResults = [];
-      const aggregated = { adds: [], updates: [], errors: [], stats: { addCount: 0, updateCount: 0, errorRows: 0, totalRows: 0 } };
+      const aggregated = {
+        adds: [],
+        updates: [],
+        errors: [],
+        stats: { addCount: 0, updateCount: 0, errorRows: 0, totalRows: 0 }
+      };
 
+      // ---------- 7) 각 탭별 순차 처리 ----------
       for (let i = 0; i < discovery.sheets.length; i++) {
         const tab = discovery.sheets[i];
         const tabUrl = `${baseUrl}/edit?gid=${tab.gid}#gid=${tab.gid}`;
-        
-        addLog(`<br />━━━ [${i+1}/${discovery.sheets.length}] "${tab.name}" 처리 중 ━━━`, 'purple-600');
+
+        addLog(
+          `<br />━━━ [${i + 1}/${discovery.sheets.length}] "${tab.name}" 처리 중 ━━━`,
+          'purple-600'
+        );
 
         try {
           const r = await API.gsheetSmart(
@@ -4545,19 +4585,25 @@ class Router {
             store.expenses || []
           );
 
-          if (r.success) {
-            tabResults.push({ tab, result: r, status: 'success' });
-            aggregated.adds.push(...r.adds.map(item => ({ ...item, _sourceTab: tab.name })));
-            aggregated.updates.push(...r.updates.map(item => ({ ...item, _sourceTab: tab.name })));
-            aggregated.errors.push(...(r.errors || []).map(e => `[${tab.name}] ${e}`));
-            aggregated.stats.addCount += r.stats.addCount;
-            aggregated.stats.updateCount += r.stats.updateCount;
-            aggregated.stats.errorRows += r.stats.errorRows;
-            aggregated.stats.totalRows += r.stats.totalRows;
-            addLog(`  ✅ ${r.typeLabel}: 추가 ${r.stats.addCount} / 수정 ${r.stats.updateCount} / 동일 ${r.stats.unchangedCount}`, 'green-600');
-          } else {
-            throw new Error(r.error || '알 수 없는 오류');
+          if (!r || !r.success) {
+            throw new Error((r && r.error) || '알 수 없는 오류');
           }
+
+          // 성공: 집계에 누적
+          tabResults.push({ tab, result: r, status: 'success' });
+          aggregated.adds.push(...r.adds.map(item => ({ ...item, _sourceTab: tab.name })));
+          aggregated.updates.push(...r.updates.map(item => ({ ...item, _sourceTab: tab.name })));
+          aggregated.errors.push(...(r.errors || []).map(e => `[${tab.name}] ${e}`));
+          aggregated.stats.addCount += r.stats.addCount;
+          aggregated.stats.updateCount += r.stats.updateCount;
+          aggregated.stats.errorRows += r.stats.errorRows;
+          aggregated.stats.totalRows += r.stats.totalRows;
+
+          const statsLine = `  ✅ ${r.typeLabel}: `
+            + `추가 ${r.stats.addCount} / `
+            + `수정 ${r.stats.updateCount} / `
+            + `동일 ${r.stats.unchangedCount}`;
+          addLog(statsLine, 'green-600');
         } catch (e) {
           tabResults.push({ tab, result: null, status: 'failed', error: e.message });
           addLog(`  ❌ 실패: ${e.message}`, 'red-600');
@@ -4569,19 +4615,29 @@ class Router {
         }
       }
 
+      // ---------- 8) 완료 요약 ----------
+      const successCount = tabResults.filter(t => t.status === 'success').length;
+      const failedCount = tabResults.filter(t => t.status === 'failed').length;
+
       addLog(`<br />━━━ 전체 분석 완료 ━━━`, 'purple-600');
-      addLog(`✅ 성공: ${tabResults.filter(t => t.status === 'success').length}개`, 'green-600');
-      addLog(`❌ 실패: ${tabResults.filter(t => t.status === 'failed').length}개`, 'red-600');
+      addLog(`✅ 성공: ${successCount}개`, 'green-600');
+      addLog(`❌ 실패: ${failedCount}개`, 'red-600');
 
       this._fullSyncResult = { tabResults, aggregated, discovery };
       this._renderFullSyncResult();
     } catch (e) {
-      resultEl.innerHTML = `
-        <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6">
-          <h3 class="font-black text-red-700 mb-2 flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i>❌ 전체 분석 실패</h3>
-          <p class="text-sm text-red-700 font-bold">${e.message}</p>
-        </div>
-      `;
+      // ---------- 9) 에러 UI (HTML 분할 조립) ----------
+      const errorHeader = '<div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6">'
+        + '<h3 class="font-black text-red-700 mb-2 flex items-center gap-2">'
+        + '<i data-lucide="alert-circle" class="w-5 h-5"></i>'
+        + '❌ 전체 분석 실패</h3>';
+
+      const errorBody = `<p class="text-sm text-red-700 font-bold whitespace-pre-line">${e.message}</p>`
+        + '<p class="text-xs text-red-600 mt-3">'
+        + '💡 위 로그에서 자세한 진단 정보를 확인하세요'
+        + '</p></div>';
+
+      resultEl.innerHTML = errorHeader + errorBody;
       lucide.createIcons();
     }
   }

@@ -2,21 +2,6 @@
   publish = "."
   functions = "netlify/functions"
 
-[dev]
-  port = 8888
-  publish = "."
-  functions = "netlify/functions"
-
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
 [functions]
   node_bundler = "esbuild"
 
@@ -24,7 +9,12 @@
   timeout = 26
 
 [functions."gsheet-discover"]
-  timeout = 20
+  timeout = 15
 
 [functions."ai-map"]
-  timeout = 20
+  timeout = 15
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200

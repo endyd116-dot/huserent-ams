@@ -130,76 +130,83 @@ function parseCSV(text) {
 }
 
 async function aiAnalyze(columns, sampleRows, existingPropNames) {
+  // ---------- 1) 스키마 설명 생성 ----------
   const schemaDesc = Object.entries(PLATFORM_SCHEMA).map(([k, v]) => {
-    const fieldsDesc = Object.entries(v.fields).map(([fk, fv]) => 
-      `    - ${fk}${fv.required?'*':''} (${fv.type}): ${fv.desc}${fv.values?` [값: ${fv.values.join('/')}]`:''}`
-    ).join('\n');
+    const fieldsDesc = Object.entries(v.fields).map(([fk, fv]) => {
+      const required = fv.required ? '*' : '';
+      const values = fv.values ? ` [값: ${fv.values.join('/')}]` : '';
+      return `    - ${fk}${required} (${fv.type}): ${fv.desc}${values}`;
+    }).join('\n');
     return `${k} - ${v.label}: ${v.description}\n  필드:\n${fieldsDesc}`;
   }).join('\n\n');
 
-  const prompt = `당신은 부동산 관리 시스템(QJ-PMS)의 데이터 통합 AI입니다.
+  // ---------- 2) 프롬프트 분할 조립 (긴 문자열 분리) ----------
+  const promptHeader = '당신은 부동산 관리 시스템(QJ-PMS)의 데이터 통합 AI입니다.\n\n'
+    + '【플랫폼 데이터 구조】\n'
+    + schemaDesc
+    + '\n\n【기존 매물 목록】\n'
+    + (existingPropNames.slice(0, 50).join(', ') || '(아직 매물 없음)');
 
-【플랫폼 데이터 구조】
-${schemaDesc}
+  const promptSheet = '\n\n【분석 대상 시트】\n'
+    + `컬럼 (${columns.length}개):\n`
+    + columns.map((c, i) => `${i + 1}. "${c}"`).join('\n')
+    + '\n\n샘플 데이터 (처음 3행):\n'
+    + JSON.stringify(sampleRows, null, 2);
 
-【기존 매물 목록】
-${existingPropNames.slice(0, 50).join(', ') || '(아직 매물 없음)'}
+  const promptInstructions = '\n\n【지시사항】\n'
+    + '1. 시트 데이터 성격을 분석해 properties/bookings/expenses 중 가장 적합한 타입 선택\n'
+    + '2. 컬럼명과 샘플 데이터 모두 분석하여 시스템 필드와 매칭\n'
+    + '3. 매칭 불가능한 필드는 null\n'
+    + '4. 신뢰도(high/medium/low) 평가\n'
+    + '5. 반드시 JSON으로만 답변';
 
-【분석 대상 시트】
-컬럼 (${columns.length}개):
-${columns.map((c,i) => `${i+1}. "${c}"`).join('\n')}
+  const promptFormat = '\n\n【응답 형식】\n'
+    + '{\n'
+    + '  "detectedType": "properties|bookings|expenses",\n'
+    + '  "confidence": "high|medium|low",\n'
+    + '  "reason": "한국어 분석 근거 한 문장",\n'
+    + '  "mapping": {\n'
+    + '    "필드명": "컬럼명 또는 null"\n'
+    + '  }\n'
+    + '}';
 
-샘플 데이터 (처음 3행):
-${JSON.stringify(sampleRows, null, 2)}
+  const prompt = promptHeader + promptSheet + promptInstructions + promptFormat;
 
-【지시사항】
-1. 시트 데이터 성격을 분석해 properties/bookings/expenses 중 가장 적합한 타입 선택
-2. 컬럼명과 샘플 데이터 모두 분석하여 시스템 필드와 매칭
-3. 매칭 불가능한 필드는 null
-4. 신뢰도(high/medium/low) 평가
-5. 반드시 JSON으로만 답변
-
-【응답 형식】
-{
-  "detectedType": "properties|bookings|expenses",
-  "confidence": "high|medium|low",
-  "reason": "한국어 분석 근거 한 문장",
-  "mapping": {
-    "필드명": "컬럼명 또는 null"
-  }
-}`;
-
+  // ---------- 3) 모델 폴백 시도 ----------
   const models = [
     { name: 'gemini-2.5-flash', timeout: 18000 },
     { name: 'gemini-flash-latest', timeout: 6000 }
   ];
-  
+
   let lastError = null;
 
   for (const { name, timeout } of models) {
     try {
       console.log(`🤖 AI 분석 시도: ${name} (timeout: ${timeout}ms)`);
       const startTime = Date.now();
-      
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${name}:generateContent?key=${GEMINI_API_KEY}`;
-      
+
+      const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+        + name
+        + ':generateContent?key='
+        + GEMINI_API_KEY;
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
-      
+
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { 
-            temperature: 0.1, 
+          generationConfig: {
+            temperature: 0.1,
             responseMimeType: "application/json",
             maxOutputTokens: 2048
           }
         }),
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId);
       const elapsed = Date.now() - startTime;
 
@@ -215,8 +222,8 @@ ${JSON.stringify(sampleRows, null, 2)}
       lastError = `${name} (${res.status}): ${errText.slice(0, 150)}`;
       console.warn(`⚠️ ${lastError} (${elapsed}ms)`);
     } catch (e) {
-      const errMsg = e.name === 'AbortError' 
-        ? `타임아웃 (${timeout}ms 초과)` 
+      const errMsg = e.name === 'AbortError'
+        ? `타임아웃 (${timeout}ms 초과)`
         : e.message;
       lastError = `${name}: ${errMsg}`;
       console.warn(`⚠️ ${lastError}`);
