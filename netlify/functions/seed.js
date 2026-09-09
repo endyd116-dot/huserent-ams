@@ -5,7 +5,7 @@ const INITIAL = {
     { id:"admin", pw:"1234", name:"김성태(대표)", role:"Admin", contact:"010-1234-5678", email:"admin@qj.com", permissions:[1,2,3,4,5,6], tagColor:"#475569" },
     { id:"manager1", pw:"1234", name:"박보람(맨투)", role:"Manager", contact:"010-2222-3333", email:"m1@qj.com", permissions:[1,2,3], tagColor:"#60a5fa" },
     { id:"manager2", pw:"1234", name:"최진호(하니)", role:"Manager", contact:"010-4444-5555", email:"m2@qj.com", permissions:[4,5], tagColor:"#f472b6" },
-    { id:"staff1", pw:"1234", name:"이철수(실장)", role:"Director", contact:"010-9999-0000", email:"s1@qj.com", permissions:[1,2,3,4,5,6], tagColor:"#94a3b8" }
+    { id:"staff1", pw:"1234", name:"이철수(실장)", role:"Staff", contact:"010-9999-0000", email:"s1@qj.com", permissions:[1,2,3,4,5,6], tagColor:"#94a3b8" }
   ],
   properties: [
     { id:1, name:"강남 스테이 M3", group:"서울", location:"서울 강남구 역삼동", address:"서울 강남구 테헤란로 123", price:120000, cost:45000, status:"occupied", image:"https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800", description:"강남역 도보 5분", manager:"manager1", repair:"완료", cleaning:"완료", gas:"도시가스", internet:"KT" },

@@ -49,6 +49,12 @@ class Store {
         }
       });
       
+      // 구버전 엑셀 업로드 등으로 깨진 날짜 값 복구 (화면 오류 + 조회 누락 방지)
+      await this._sanitizeDates();
+
+      // 관리자 등급 명칭 변경(Director → Staff) 마이그레이션
+      await this._migrateRoles();
+
       // 기본값 보정
       if (!this.majorCats.length) this.majorCats = ["초기투자지출","고정지출","변동지출"];
       if (!Object.keys(this.subCats).length) this.subCats = {
@@ -148,6 +154,70 @@ class Store {
     const ids = new Set(this.statsProperties().map(p => p.id));
     return (this.expenses || []).filter(e => ids.has(e.propId));
   }
+  /* 날짜 필드가 문자열이 아니면(엑셀 시리얼 숫자, Date 객체 등) 화면 전체가 죽고
+     기간 필터에서도 조용히 빠진다. 로드 직후 정규화하고, 실제로 고쳐진 건만 서버에 반영한다. */
+  async _sanitizeDates() {
+    const DATE_FIELDS = { expenses: ['date'], bookings: ['checkIn', 'checkOut'], schedule: ['date'] };
+    const TEXT_FIELDS = { logs: ['time'], chats: ['time'] };  // 'YYYY-MM-DD HH:MM' 형태라 문자열화만
+    const dirty = new Set();
+    let fixed = 0;
+    const broken = [];
+
+    for (const [col, fields] of Object.entries(DATE_FIELDS)) {
+      for (const row of (this[col] || [])) {
+        for (const f of fields) {
+          const v = row[f];
+          if (v === undefined || v === null || v === '' || isDateStr(v)) continue;
+          const s = toDateStr(v);
+          if (s) { row[f] = s; fixed++; }
+          else {
+            // 해석 불가 → 원본은 보존하고 비워서 오류만 막는다
+            row[f + 'Invalid'] = String(v);
+            row[f] = '';
+            broken.push(`${col}#${row.id} ${f}=${String(v)}`);
+          }
+          dirty.add(col);
+        }
+      }
+    }
+    for (const [col, fields] of Object.entries(TEXT_FIELDS)) {
+      for (const row of (this[col] || [])) {
+        for (const f of fields) {
+          if (row[f] !== undefined && row[f] !== null && typeof row[f] !== 'string') {
+            row[f] = String(row[f]); dirty.add(col);
+          }
+        }
+      }
+    }
+
+    if (!dirty.size) return;
+    console.warn(`[날짜 복구] ${fixed}건 정규화, 해석 불가 ${broken.length}건`, broken.slice(0, 10));
+    try {
+      for (const col of dirty) await API.setAll(col, this[col]);
+      if (fixed) {
+        await this.addLog(`날짜 형식 자동 복구: ${fixed}건${broken.length ? ` (해석 불가 ${broken.length}건 제외)` : ''}`, true);
+      }
+    } catch (e) { console.warn('날짜 복구 저장 실패:', e); }
+
+    if (this.currentUser?.role === 'Admin' && (fixed || broken.length)) {
+      this._dateFixNotice = { fixed, broken };
+    }
+  }
+
+  // 'Director' 등급을 'Staff'로 1회 정규화 (표시/권한 일관성)
+  async _migrateRoles() {
+    const targets = (this.users || []).filter(u => u.role === 'Director');
+    if (!targets.length) return;
+    targets.forEach(u => { u.role = 'Staff'; });
+    try {
+      await API.setAll('users', this.users);
+      if (this.currentUser && this.currentUser.role === 'Director') {
+        this.currentUser.role = 'Staff';
+        sessionStorage.setItem('qj_user', JSON.stringify(this.currentUser));
+      }
+    } catch (e) { console.warn('역할 마이그레이션 실패:', e); }
+  }
+
   // ===== 헬퍼 =====
   prop(id) { return this.properties.find(p => p.id === parseInt(id)); }
   user(id) { return this.users.find(u => u.id === id); }
@@ -155,14 +225,14 @@ class Store {
 
   hasPerm(propId) {
     if (!this.currentUser) return false;
-    if (this.currentUser.role === 'Admin' || this.currentUser.role === 'Director') return true;
+    if (this.currentUser.role === 'Admin' || isStaffRole(this.currentUser.role)) return true;
     return this.currentUser.permissions?.includes(parseInt(propId));
   }
 
   canEdit(propId) {
     if (!this.currentUser) return false;
     if (this.currentUser.role === 'Admin') return true;
-    if (this.currentUser.role === 'Director') return false;
+    if (isStaffRole(this.currentUser.role)) return false;
     return this.currentUser.permissions?.includes(parseInt(propId));
   }
 
@@ -306,17 +376,26 @@ class Store {
     });
   }
   // ===== 매물 =====
+  // 매물 금액 필드 정규화 (빈 값은 저장하지 않고, 과거 '원가'는 있을 때만 유지)
+  _normalizeProp(d) {
+    const out = { ...d };
+    ['price', 'priceWeek', 'mgmtFeeWeek', 'cleanFee', 'cost'].forEach(k => {
+      if (out[k] === '' || out[k] === null || out[k] === undefined) { if (k === 'price') out[k] = 0; else delete out[k]; }
+      else out[k] = num(out[k]);
+    });
+    return out;
+  }
+
   async upsertProp(d) {
+    d = this._normalizeProp(d);
     if (d.id && this.properties.find(p => p.id == d.id)) {
-      const updated = await API.update('properties', d.id, { ...d, price:+d.price, cost:+d.cost });
+      const updated = await API.update('properties', d.id, d);
       const i = this.properties.findIndex(p => p.id == d.id);
       this.properties[i] = updated;
       await this.addLog(`숙소 [${d.name}] 수정`, true);
     } else {
       d.id = Date.now();
       d.status = 'empty';
-      d.price = +d.price;
-      d.cost = +d.cost;
       const created = await API.create('properties', d);
       this.properties.push(created);
       await this.addLog(`신규 숙소 [${d.name}] 등록`);
@@ -333,7 +412,7 @@ class Store {
   // ===== 예약 =====
   async addBooking(d) {
     const p = this.prop(d.propId);
-    const c = await API.create('bookings', { ...d, price:+d.price, people:+d.people, propId:+d.propId });
+    const c = await API.create('bookings', { ...d, price:num(d.price), people:+d.people, propId:+d.propId });
     this.bookings.push(c);
     await this.addLog(`${p.name}: ${d.guest}님 예약 등록`);
     if (p?.manager) {
@@ -342,7 +421,7 @@ class Store {
   }
 
   async updateBooking(id, d) {
-    const u = await API.update('bookings', id, { ...d, price:+d.price, people:+d.people, propId:+d.propId });
+    const u = await API.update('bookings', id, { ...d, price:num(d.price), people:+d.people, propId:+d.propId });
     const i = this.bookings.findIndex(b => b.id === parseInt(id));
     if (i > -1) this.bookings[i] = u;
     await this.addLog(`예약 수정 (${d.guest})`, true);
@@ -426,7 +505,7 @@ class Store {
 
   // ===== 지출 =====
   async addExpense(d) {
-    const c = await API.create('expenses', { ...d, amount:+d.amount, propId:+d.propId });
+    const c = await API.create('expenses', { ...d, amount:num(d.amount), propId:+d.propId });
     this.expenses.push(c);
     await this.addLog(`[${d.category}] 지출 ₩${(+d.amount).toLocaleString()}`, true);
   }

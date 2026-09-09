@@ -25,7 +25,7 @@ window.UI = {
         </button>
         <button onclick="router.showMyProfile();router.closeMobileMenu()" class="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 rounded-xl text-left">
           <div class="w-9 h-9 rounded-xl flex items-center justify-center font-black text-white flex-shrink-0" style="background:${u.tagColor||'#2563eb'}">${u.name.charAt(0)}</div>
-          <div class="flex-1 min-w-0 text-left"><p class="text-xs font-black truncate">${u.name}</p><p class="text-[9px] text-blue-400 font-bold uppercase">${u.role}</p></div>
+          <div class="flex-1 min-w-0 text-left"><p class="text-xs font-black truncate">${u.name}</p><p class="text-[9px] text-blue-400 font-bold uppercase">${roleLabel(u.role)}</p></div>
           <i data-lucide="settings" class="w-4 h-4 text-slate-500 flex-shrink-0"></i>
         </button>
       </div>
@@ -47,7 +47,7 @@ window.UI = {
       <div class="flex items-center gap-2 flex-shrink-0">
         <button onclick="router.openSearch()" class="hidden md:flex items-center gap-2 px-3 h-10 bg-slate-50 hover:bg-blue-50 rounded-xl text-xs font-bold text-slate-500"><i data-lucide="search" class="w-4 h-4"></i>검색<kbd class="px-1.5 py-0.5 bg-white rounded text-[9px] font-mono ml-2">⌘K</kbd></button>
         <button onclick="router.showNotifications()" class="relative w-10 h-10 bg-slate-50 hover:bg-blue-50 rounded-xl flex items-center justify-center"><i data-lucide="bell" class="w-5 h-5 text-slate-500"></i>${unread?`<span class="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center ring-pulse">${unread}</span>`:''}</button>
-        <button onclick="router.showMyProfile()" class="text-right hidden sm:block hover:bg-slate-50 px-3 py-1.5 rounded-xl"><p class="text-xs font-black flex items-center gap-1">${u.name}<i data-lucide="settings" class="w-3 h-3 text-slate-400"></i></p><p class="text-[9px] text-blue-600 font-bold uppercase">${u.role}</p></button>
+        <button onclick="router.showMyProfile()" class="text-right hidden sm:block hover:bg-slate-50 px-3 py-1.5 rounded-xl"><p class="text-xs font-black flex items-center gap-1">${u.name}<i data-lucide="settings" class="w-3 h-3 text-slate-400"></i></p><p class="text-[9px] text-blue-600 font-bold uppercase">${roleLabel(u.role)}</p></button>
         <button onclick="router.logout()" class="w-10 h-10 bg-slate-50 hover:bg-red-50 text-slate-500 hover:text-red-500 rounded-xl flex items-center justify-center"><i data-lucide="log-out" class="w-5 h-5"></i></button>
       </div>
     </header>`;

@@ -153,7 +153,7 @@ class Router {
       if (String(b.id).includes(q) || (b.memo||'').toLowerCase().includes(ql)) {
         const p = store.prop(b.propId);
         if (p && store.hasPerm(p.id)) {
-          items.push({ type:'book', label:`${b.guest} - ${p.name}`, sub:`${b.checkIn} ~ ${b.checkOut} · ${fmt(b.price)}`, badge:'📅 예약', color:'bg-green-100 text-green-700', action:() => { this.closeSearch(); this.showPropActions(p.id); } });
+          items.push({ type:'book', label:`${b.guest} - ${p.name}`, sub:`${b.checkIn} ~ ${b.checkOut} · ${fmt(bkRev(b))}`, badge:'📅 예약', color:'bg-green-100 text-green-700', action:() => { this.closeSearch(); this.showPropActions(p.id); } });
         }
       }
     });
@@ -383,18 +383,21 @@ class Router {
     const year = y ?? now.getFullYear();
     const month = m ?? now.getMonth();
     window._calPropId = propId;
-    openModal(`📅 ${p.name}`, `<div class="flex justify-between items-center mb-6 flex-wrap gap-2"><div class="flex items-center gap-2"><button onclick="router.showBookingCalendar(${propId},${month===0?year-1:year},${month===0?11:month-1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-left" class="w-5 h-5"></i></button><h3 class="text-2xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router.showBookingCalendar(${propId},${month===11?year+1:year},${month===11?0:month+1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-right" class="w-5 h-5"></i></button><button onclick="router.showBookingCalendar(${propId})" class="bg-blue-600 text-white px-3 py-2 rounded-xl font-black text-xs">오늘</button></div><div class="flex items-center gap-2 text-xs font-bold flex-wrap">${store.platforms.map(pl=>`<span class="flex items-center gap-1"><span class="w-3 h-3 rounded" style="background:${pl.color}"></span>${pl.name}</span>`).join('')}</div></div><div class="bg-slate-50 p-4 rounded-2xl">${buildCalendar(year, month, propId, 'router.onCalendarClick')}</div>`, 'max-w-5xl');
+    openModal(`📅 ${p.name}`, `<div class="flex justify-between items-center mb-6 flex-wrap gap-2"><div class="flex items-center gap-2"><button onclick="router.showBookingCalendar(${propId},${month===0?year-1:year},${month===0?11:month-1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-left" class="w-5 h-5"></i></button><h3 class="text-2xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router.showBookingCalendar(${propId},${month===11?year+1:year},${month===11?0:month+1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-right" class="w-5 h-5"></i></button><button onclick="router.showBookingCalendar(${propId})" class="bg-blue-600 text-white px-3 py-2 rounded-xl font-black text-xs">오늘</button></div><div class="flex items-center gap-4 text-xs font-bold flex-wrap">${calendarLegend()}<span class="flex items-center gap-2 flex-wrap">${store.platforms.map(pl=>`<span class="flex items-center gap-1"><span class="w-3 h-3 rounded" style="background:${pl.color}"></span>${esc(pl.name)}</span>`).join('')}</span></div></div><div class="bg-slate-50 p-4 rounded-2xl">${buildCalendar(year, month, propId, 'router.onCalendarClick')}</div>`, 'max-w-5xl');
     lucide.createIcons();
   }
   
-  onCalendarClick(date, bookingId) {
+  onCalendarClick(date, bookingId, propId) {
     if (bookingId) {
       const b = store.bookings.find(x => x.id === bookingId);
+      if (!b) { toast('예약을 찾을 수 없습니다','error'); return; }
       if (!store.canEdit(b.propId)) { toast('수정 권한 없음','error'); return; }
       this.showBookingForm(b.propId, b);
     } else {
-      if (!store.canEdit(window._calPropId)) { toast('예약 권한 없음','error'); return; }
-      this.showBookingForm(window._calPropId, null, date);
+      const pid = propId ?? window._calPropId;
+      if (!pid) { toast('매물을 먼저 선택하세요','error'); return; }
+      if (!store.canEdit(pid)) { toast('예약 권한 없음','error'); return; }
+      this.showBookingForm(pid, null, date);
     }
   }
 
@@ -402,13 +405,117 @@ class Router {
     const p = store.prop(propId);
     const b = booking || {};
     const isEdit = !!booking;
-    openModal(`${isEdit?'✏️':'🆕'} ${p.name}`, `<form id="bk-form" class="space-y-5"><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-black text-slate-400 uppercase">체크인</label><input type="date" name="checkIn" value="${b.checkIn||prefill||todayStr()}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div><div><label class="text-[10px] font-black text-slate-400 uppercase">체크아웃</label><input type="date" name="checkOut" value="${b.checkOut||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div></div><div class="grid grid-cols-2 gap-4"><input name="guest" value="${b.guest||''}" placeholder="예약자" class="w-full p-3 border rounded-xl font-bold" required><input name="contact" value="${b.contact||''}" placeholder="연락처" class="w-full p-3 border rounded-xl font-bold" required></div><div class="grid grid-cols-3 gap-4"><input name="nationality" value="${b.nationality||'한국'}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold"><input type="number" name="people" value="${b.people||2}" min="1" placeholder="인원" class="w-full p-3 border rounded-xl font-bold"><select name="platform" class="w-full p-3 border rounded-xl font-bold">${store.platforms.map(pl=>`<option ${b.platform===pl.name?'selected':''}>${pl.name}</option>`).join('')}</select></div><div class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl text-white"><div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">원가 (1박)</span><span class="font-black">${fmt(p.cost)}</span></div><div class="flex justify-between mb-3 text-xs"><span class="opacity-80 font-bold">기본가 (1박)</span><span class="font-black">${fmt(p.price)}</span></div><div class="flex justify-between mb-2 text-xs" id="ni"><span class="opacity-80 font-bold">숙박일 × 원가</span><span class="font-black" id="ct">₩0</span></div><div class="flex justify-between mb-4 text-xs"><span class="opacity-80 font-bold">기본가 × 숙박일</span><span class="font-black" id="sp">₩0</span></div><input type="number" name="price" value="${b.price||p.price}" placeholder="최종 가격" class="w-full p-4 bg-white/10 border-2 border-white/20 rounded-xl text-2xl font-black outline-none focus:border-white" required></div><textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold h-20">${b.memo||''}</textarea><div class="flex gap-3"><button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black">${isEdit?'예약 수정':'예약 등록'}</button>${isEdit?`<button type="button" onclick="router.deleteBooking(${booking.id})" class="px-8 bg-red-50 text-red-500 rounded-xl font-black">예약 취소</button>`:''}</div></form>`, 'max-w-3xl');
+    const r = propRates(p);
+    const a = bookingAmounts(b);
+    const ref = (label, v) => `<div class="flex justify-between gap-2"><span class="opacity-70 font-bold">${label}</span><span class="font-black">${v ? fmt(v) : '-'}</span></div>`;
+    const money = (name, label, val) => `<div><label class="text-[10px] font-black opacity-70 uppercase">${label}</label><input type="number" name="${name}" value="${val || ''}" min="0" step="1" placeholder="0" class="bk-amt w-full p-3 bg-white/10 border-2 border-white/20 rounded-xl font-black outline-none focus:border-white mt-1"></div>`;
+
+    openModal(`${isEdit?'✏️':'🆕'} ${p.name}`, `<form id="bk-form" class="space-y-5">
+      <div class="grid grid-cols-3 gap-4">
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">체크인</label><input type="date" name="checkIn" value="${b.checkIn||prefill||todayStr()}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">체크아웃</label><input type="date" name="checkOut" value="${b.checkOut||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">일수</label><div id="bkNights" class="w-full p-3 bg-slate-100 rounded-xl font-black text-center mt-1">-</div></div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <input name="guest" value="${b.guest||''}" placeholder="예약자" class="w-full p-3 border rounded-xl font-bold" required>
+        <input name="contact" value="${b.contact||''}" placeholder="연락처" class="w-full p-3 border rounded-xl font-bold" required>
+      </div>
+      <div class="grid grid-cols-3 gap-4">
+        <input name="nationality" value="${b.nationality||'한국'}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold">
+        <input type="number" name="people" value="${b.people||2}" min="1" placeholder="인원" class="w-full p-3 border rounded-xl font-bold">
+        <select name="platform" class="w-full p-3 border rounded-xl font-bold">${store.platforms.map(pl=>`<option ${b.platform===pl.name?'selected':''}>${pl.name}</option>`).join('')}</select>
+      </div>
+
+      <div class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl text-white space-y-4">
+        <div class="bg-white/10 rounded-xl p-4">
+          <div class="flex justify-between items-center mb-2">
+            <p class="text-[10px] font-black uppercase opacity-70">매물 기준가</p>
+            <button type="button" id="bkAutoCalc" class="text-[10px] font-black bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg">🔄 기준가로 자동계산</button>
+          </div>
+          <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+            ${ref('판매가 (1박)', r.nightly)}
+            ${ref('관리비 (주당)', r.mgmtWeek)}
+            ${ref('판매가 (주당)', r.weekly)}
+            ${ref('청소비 (1회)', r.cleanOnce)}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          ${money('rentFee', '임대료', a.hasNew ? a.rent : '')}
+          ${money('mgmtFeeTotal', '관리비 (전체)', a.hasNew ? a.mgmt : '')}
+          ${money('cleanFee', '청소비', a.hasNew ? a.clean : '')}
+          <div class="flex flex-col justify-end">
+            <label class="text-[10px] font-black opacity-70 uppercase">플랫폼 매출액</label>
+            <div id="bkPlatformRev" class="w-full p-3 bg-white/20 border-2 border-white/10 rounded-xl font-black mt-1 text-right">₩0</div>
+          </div>
+        </div>
+        <p class="text-[10px] opacity-60 font-bold -mt-2">플랫폼 매출액 = 임대료 + 관리비(전체) + 청소비</p>
+
+        <div>
+          <label class="text-[10px] font-black opacity-70 uppercase">실 입금 금액 (플랫폼)</label>
+          <input type="number" name="netDeposit" value="${a.hasNew ? a.net : (b.price||'')}" min="0" step="1" placeholder="0" class="bk-amt w-full p-4 bg-white/10 border-2 border-white/20 rounded-xl text-2xl font-black outline-none focus:border-white mt-1" required>
+          <p id="bkFeeHint" class="text-[10px] opacity-60 font-bold mt-1"></p>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+          ${money('bedding', '이불', a.hasNew ? a.bedding : '')}
+          ${money('parking', '주차', a.hasNew ? a.parking : '')}
+          ${money('extraStay', '추가숙박/기타', a.hasNew ? a.extra : '')}
+        </div>
+
+        <div class="flex justify-between items-center pt-4 border-t border-white/20">
+          <span class="text-sm font-black uppercase opacity-80">총 매출액</span>
+          <span id="bkTotalRev" class="text-3xl font-black">₩0</span>
+        </div>
+        <p class="text-[10px] opacity-60 font-bold -mt-2">총 매출액 = 실 입금 금액 + 이불 + 주차 + 추가숙박/기타</p>
+      </div>
+
+      <textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold h-20">${b.memo||''}</textarea>
+      <div class="flex gap-3">
+        <button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black">${isEdit?'예약 수정':'예약 등록'}</button>
+        ${isEdit?`<button type="button" onclick="router.deleteBooking(${booking.id})" class="px-8 bg-red-50 text-red-500 rounded-xl font-black">예약 취소</button>`:''}
+      </div>
+    </form>`, 'max-w-3xl');
+
     const f = document.getElementById('bk-form');
-    const upd = () => {
-      const ci=f.checkIn.value, co=f.checkOut.value;
-      if (ci&&co) { const n=daysBetween(ci,co); f.querySelector('#ni span:first-child').textContent=`${n}박 × 원가`; f.querySelector('#ct').textContent=fmt(n*p.cost); f.querySelector('#sp').textContent=fmt(n*p.price); }
+    const el = n => f.elements[n];
+    const val = n => num(el(n).value);
+    const nightsOf = () => {
+      const ci = el('checkIn').value, co = el('checkOut').value;
+      return (ci && co && ci < co) ? daysBetween(ci, co) : 0;
     };
-    f.checkIn.onchange = f.checkOut.onchange = upd; upd();
+
+    const recalc = () => {
+      const n = nightsOf();
+      document.getElementById('bkNights').textContent = n ? `${n}일` : '-';
+      const platform = val('rentFee') + val('mgmtFeeTotal') + val('cleanFee');
+      const total = val('netDeposit') + val('bedding') + val('parking') + val('extraStay');
+      document.getElementById('bkPlatformRev').textContent = fmt(platform);
+      document.getElementById('bkTotalRev').textContent = fmt(total);
+      const diff = platform - val('netDeposit');
+      document.getElementById('bkFeeHint').textContent =
+        (platform && val('netDeposit')) ? `플랫폼 수수료/차감액 ${fmt(diff)} (${(diff / platform * 100).toFixed(1)}%)` : '';
+    };
+
+    // 기준가 × 숙박일로 임대료/관리비(전체)/청소비 채우기
+    const autoCalc = () => {
+      const n = nightsOf();
+      if (!n) { toast('체크인·체크아웃을 먼저 입력하세요', 'warning'); return; }
+      const weeks = Math.ceil(n / 7);
+      el('rentFee').value = r.nightly ? r.nightly * n : '';
+      el('mgmtFeeTotal').value = r.mgmtWeek ? r.mgmtWeek * weeks : '';
+      el('cleanFee').value = r.cleanOnce || '';
+      if (!val('netDeposit')) el('netDeposit').value = (val('rentFee') + val('mgmtFeeTotal') + val('cleanFee')) || '';
+      recalc();
+    };
+
+    document.getElementById('bkAutoCalc').onclick = autoCalc;
+    f.querySelectorAll('.bk-amt').forEach(x => x.addEventListener('input', recalc));
+    el('checkIn').onchange = el('checkOut').onchange = recalc;
+
+    // 신규 예약이고 금액이 비어 있으면 기준가로 미리 채운다
+    if (!isEdit && nightsOf()) autoCalc(); else recalc();
+
     f.onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -419,6 +526,11 @@ class Router {
         await store.notifyAdmins(`⚠️ 예약 충돌 시도: ${p.name} (${d.guest}님이 ${conflict.guest}님 기간과 겹침)`, 'warning', { type:'detail', propId });
         return;
       }
+      BOOKING_AMOUNT_KEYS.forEach(k => { d[k] = num(d[k]); });
+      d.platformRevenue = d.rentFee + d.mgmtFeeTotal + d.cleanFee;
+      d.totalRevenue = d.netDeposit + d.bedding + d.parking + d.extraStay;
+      d.price = d.totalRevenue; // 통계 하위호환 (총 매출액 기준)
+      d.nights = daysBetween(d.checkIn, d.checkOut);
       d.propId = propId;
       showLoading(true);
       try {
@@ -431,7 +543,7 @@ class Router {
     };
     lucide.createIcons();
   }
-  
+
   async deleteBooking(id) {
     if (!confirm('예약을 취소하시겠습니까?')) return;
     showLoading(true);
@@ -445,7 +557,35 @@ class Router {
     const images = p.images && p.images.length ? p.images : (p.image ? [p.image] : []);
     const mainIdx = p.mainImage || 0;
     const main = images[mainIdx] || images[0] || '';
-    openModal(`ℹ️ ${p.name}`, `${main?`<img src="${main}" id="mainPropImg" class="w-full h-72 object-cover rounded-2xl mb-4">`:''}${images.length>1?`<div class="flex gap-2 mb-6 overflow-x-auto pb-2">${images.map((img,i)=>`<img src="${img}" class="w-24 h-20 object-cover rounded-lg cursor-pointer flex-shrink-0 ${i===mainIdx?'ring-2 ring-blue-500':''}" onclick="document.getElementById('mainPropImg').src='${img}'">`).join('')}</div>`:'<div class="mb-6"></div>'}<p class="text-sm bg-slate-50 p-6 rounded-2xl mb-6">${p.description||'-'}</p><div class="grid grid-cols-2 gap-3 text-sm mb-4">${[['그룹',p.group],['주소',p.address],['1박',fmt(p.price)],['원가',fmt(p.cost)],['담당',mgr?.name||'-'],['수리',p.repair],['청소',p.cleaning],['가스',p.gas],['인터넷',p.internet],['분리수거',p.recycleDay],['비밀번호',p.password],['관리실',p.office]].map(([k,v])=>`<div class="bg-white p-4 rounded-xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${k}</p><p class="font-bold mt-1">${v||'-'}</p></div>`).join('')}</div>${p.customFields&&p.customFields.length?`<div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4"><p class="text-xs font-black text-amber-700 uppercase mb-3">📌 추가 운영 정보</p><div class="grid grid-cols-2 gap-2 text-sm">${p.customFields.map(cf=>`<div class="bg-white p-3 rounded-lg"><p class="text-[10px] font-black text-amber-600 uppercase">${cf.label}</p><p class="font-bold mt-1">${cf.value||'-'}</p></div>`).join('')}</div></div>`:''}`, 'max-w-4xl');
+    const r = propRates(p);
+    // 주소 = 위치 + 상세위치
+    const fullAddr = [p.location, p.address].filter(Boolean).join(' ') || '-';
+
+    const box = (k, v) => `<div class="bg-white p-4 rounded-xl border"><p class="text-[10px] font-black text-slate-400 uppercase">${esc(k)}</p><p class="font-bold mt-1 break-words">${esc(v || '-')}</p></div>`;
+    const section = (title, rows) => `<div class="mb-4"><p class="text-xs font-black text-slate-500 uppercase mb-2">${title}</p><div class="grid grid-cols-2 gap-3 text-sm">${rows.map(([k, v]) => box(k, v)).join('')}</div></div>`;
+
+    openModal(`ℹ️ ${p.name}`, `
+      ${main ? `<img src="${main}" id="mainPropImg" class="w-full h-72 object-cover rounded-2xl mb-4">` : ''}
+      ${images.length > 1 ? `<div class="flex gap-2 mb-6 overflow-x-auto pb-2">${images.map((img, i) => `<img src="${img}" class="w-24 h-20 object-cover rounded-lg cursor-pointer flex-shrink-0 ${i === mainIdx ? 'ring-2 ring-blue-500' : ''}" onclick="document.getElementById('mainPropImg').src='${img}'">`).join('')}</div>` : '<div class="mb-6"></div>'}
+      <p class="text-sm bg-slate-50 p-6 rounded-2xl mb-6">${esc(p.description) || '-'}</p>
+
+      ${section('📍 기본 정보', [['지역 그룹', p.group], ['주소', fullAddr]])}
+      ${section('💰 기준가', [
+        ['판매가 (1박)', r.nightly ? fmt(r.nightly) : ''],
+        ['판매가 (주당)', r.weekly ? fmt(r.weekly) : ''],
+        ['관리비 (주당)', r.mgmtWeek ? fmt(r.mgmtWeek) : ''],
+        ['청소비 (1회)', r.cleanOnce ? fmt(r.cleanOnce) : '']
+      ])}
+      ${section('🛠 기본 운영 정보', [
+        ['담당매니저', mgr?.name], ['수리', p.repair], ['입주청소', p.cleaning], ['인터넷', p.internet],
+        ['도시가스', p.gas], ['수도', p.water], ['전기', p.electric], ['분리수거일', p.recycleDay],
+        ['공동현관(1층) 비밀번호', p.mainDoorPassword], ['현관 비밀번호', p.password]
+      ])}
+      ${section('🏢 관리사무소', [['전화번호', p.officePhone], ['관리비 마감일', p.mgmtDueDate], ['계좌번호', p.officeAccount]])}
+      ${p.guide ? `<div class="mb-4"><p class="text-xs font-black text-slate-500 uppercase mb-2">🔗 이용안내 링크</p><a href="${esc(p.guide)}" target="_blank" rel="noopener" class="block bg-white p-4 rounded-xl border font-bold text-blue-600 break-all">${esc(p.guide)}</a></div>` : ''}
+      ${p.customFields && p.customFields.length ? `<div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4"><p class="text-xs font-black text-amber-700 uppercase mb-3">📌 추가 운영 정보</p><div class="grid grid-cols-2 gap-2 text-sm">${p.customFields.map(cf => `<div class="bg-white p-3 rounded-lg"><p class="text-[10px] font-black text-amber-600 uppercase">${esc(cf.label)}</p><p class="font-bold mt-1">${esc(cf.value) || '-'}</p></div>`).join('')}</div></div>` : ''}
+    `, 'max-w-4xl');
+    lucide.createIcons();
   }
 
     async showChatBox(propId) {
@@ -719,7 +859,7 @@ class Router {
     const cur = this._mySchedDate;
     const year = cur.getFullYear(), month = cur.getMonth();
     const myList = store.schedule.filter(s => s.staff === u.name).sort((a,b)=>a.date.localeCompare(b.date));
-    const monthList = myList.filter(s => s.date.startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
+    const monthList = myList.filter(s => toDateStr(s.date).startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
     document.getElementById('app-root').innerHTML = `<div class="flex min-h-screen">${UI.Sidebar('mySchedule')}<main class="flex-1 bg-slate-50 min-h-screen">${UI.Header('내 스케줄')}<div class="p-8 max-w-[1600px] mx-auto"><div class="flex justify-between items-center mb-6 flex-wrap gap-3"><div><h2 class="text-3xl font-black">📅 내 스케줄</h2><p class="text-slate-500 mt-1">관리자 배정 + 본인 등록 통합 (양방향 알림 연동)</p></div><div class="flex gap-2 items-center flex-wrap"><button onclick="router._mySchedDate.setMonth(router._mySchedDate.getMonth()-1);router.go('mySchedule')" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router._mySchedDate.setMonth(router._mySchedDate.getMonth()+1);router.go('mySchedule')" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button onclick="router._mySchedDate=new Date();router.go('mySchedule')" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button><button onclick="router.showMyScheduleForm()" class="bg-purple-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄 등록</button></div></div><div class="grid grid-cols-3 gap-4 mb-6 mobile-stack"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">이번달</p><p class="text-2xl font-black text-purple-600 mt-2">${monthList.length}건</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">전체 예정</p><p class="text-2xl font-black text-blue-600 mt-2">${myList.filter(s=>s.date>=todayStr()).length}건</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">오늘</p><p class="text-2xl font-black text-amber-500 mt-2">${myList.filter(s=>s.date===todayStr()).length}건</p></div></div><div class="bg-white p-6 rounded-2xl border mb-6"><h3 class="text-xl font-black mb-4">📆 캘린더</h3>${this._buildScheduleCalendar(year,month,myList)}</div><div class="bg-white rounded-2xl border overflow-hidden"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">📋 ${year}년 ${month+1}월 스케줄</h3></div><div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">일시</th><th class="px-4 py-3 text-left">숙소</th><th class="px-4 py-3 text-left">업무</th><th class="px-4 py-3 text-left">알람</th><th class="px-4 py-3 text-left">메모</th><th class="px-4 py-3 text-left">등록자</th><th class="px-4 py-3"></th></tr></thead><tbody class="text-sm divide-y">${monthList.length?monthList.map(s=>{const isMine=s.createdBy===u.id;return `<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-black">${s.date} ${s.time}</td><td class="px-4 py-3 text-xs">${store.prop(s.propId)?.name||'-'}</td><td class="px-4 py-3">${s.task}</td><td class="px-4 py-3 text-xs">${(s.alarm||[]).map(a=>a+'분').join(', ')||'없음'}</td><td class="px-4 py-3 text-xs text-slate-500">${s.memo||'-'}</td><td class="px-4 py-3 text-xs"><span class="px-2 py-0.5 ${isMine?'bg-purple-100 text-purple-700':'bg-amber-100 text-amber-700'} rounded font-black">${isMine?'본인':'관리자배정'}</span></td><td class="px-4 py-3">${(isMine||u.role==='Admin')?`<button onclick="router.delMySched(${s.id})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`:''}</td></tr>`}).join(''):'<tr><td colspan="7" class="text-center py-8 text-slate-400 font-bold">이번 달 스케줄 없음</td></tr>'}</tbody></table></div></div></div></main></div>`;
     lucide.createIcons();
   }
@@ -841,17 +981,17 @@ class Router {
     const thisMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     const lastMonthDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
     const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth()+1).padStart(2,'0')}`;
-    const thisRev = store.bookings.filter(b => (b.checkIn||'').startsWith(thisMonth)).reduce((s,b)=>s+(+b.price||0),0);
-    const lastRev = store.bookings.filter(b => (b.checkIn||'').startsWith(lastMonth)).reduce((s,b)=>s+(+b.price||0),0);
+    const thisRev = store.bookings.filter(b => toDateStr(b.checkIn).startsWith(thisMonth)).reduce((s,b)=>s+bkRev(b),0);
+    const lastRev = store.bookings.filter(b => toDateStr(b.checkIn).startsWith(lastMonth)).reduce((s,b)=>s+bkRev(b),0);
     const revChange = lastRev ? ((thisRev-lastRev)/lastRev*100) : 0;
-    const thisCost = store.expenses.filter(e => (e.date||'').startsWith(thisMonth) && e.majorCat!=='초기투자지출').reduce((s,e)=>s+(+e.amount||0),0);
-    const lastCost = store.expenses.filter(e => (e.date||'').startsWith(lastMonth) && e.majorCat!=='초기투자지출').reduce((s,e)=>s+(+e.amount||0),0);
+    const thisCost = store.expenses.filter(e => toDateStr(e.date).startsWith(thisMonth) && e.majorCat!=='초기투자지출').reduce((s,e)=>s+num(e.amount),0);
+    const lastCost = store.expenses.filter(e => toDateStr(e.date).startsWith(lastMonth) && e.majorCat!=='초기투자지출').reduce((s,e)=>s+num(e.amount),0);
     const costChange = lastCost ? ((thisCost-lastCost)/lastCost*100) : 0;
     const thisProfit = thisRev - thisCost;
     const lastProfit = lastRev - lastCost;
     const profitChange = lastProfit ? ((thisProfit-lastProfit)/Math.abs(lastProfit)*100) : 0;
-    const thisBks = store.bookings.filter(b => (b.checkIn||'').startsWith(thisMonth)).length;
-    const lastBks = store.bookings.filter(b => (b.checkIn||'').startsWith(lastMonth)).length;
+    const thisBks = store.bookings.filter(b => toDateStr(b.checkIn).startsWith(thisMonth)).length;
+    const lastBks = store.bookings.filter(b => toDateStr(b.checkIn).startsWith(lastMonth)).length;
     const bkChange = lastBks ? ((thisBks-lastBks)/lastBks*100) : 0;
     const specials = store.logs.filter(l=>l.special).slice(0,5);
     const insights = store.getAIInsights().slice(0,3);
@@ -898,7 +1038,7 @@ class Router {
     </div>`;
     setTimeout(()=>{
       if (!store.properties.length) return;
-      const data = store.properties.map(p=>({n:p.name.slice(0,8),v:store.bookings.filter(b=>b.propId===p.id&&(b.checkIn||'').startsWith(thisMonth)).reduce((s,b)=>s+(+b.price||0),0)}));
+      const data = store.properties.map(p=>({n:p.name.slice(0,8),v:store.bookings.filter(b=>b.propId===p.id&&toDateStr(b.checkIn).startsWith(thisMonth)).reduce((s,b)=>s+bkRev(b),0)}));
       const el = document.getElementById('mc');
       if(el) new Chart(el,{type:'bar',data:{labels:data.map(d=>d.n),datasets:[{data:data.map(d=>d.v),backgroundColor:'#2563eb'}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
     },100);
@@ -918,7 +1058,7 @@ class Router {
       <h2 class="text-3xl font-black">🏠 매물 관리 (${visible.length}${hidden.length?` <span class="text-sm text-slate-400">+ 숨김 ${hidden.length}</span>`:''})</h2>
       <div class="flex gap-2 flex-wrap">
         ${hidden.length?`<button onclick="router._showHiddenProps=!router._showHiddenProps;router.renderAdminTab()" class="bg-slate-${showHidden?'900':'100'} ${showHidden?'text-white':'text-slate-700'} px-4 py-3 rounded-xl font-black text-xs">${showHidden?'🙈 숨김 매물 가리기':'👁️ 숨김 매물 보기'}</button>`:''}
-        <button onclick="router.showGroupMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 그룹</button>
+        <button onclick="router.showGroupMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 지역 그룹</button>
         <button onclick="router.showPropForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 신규</button>
       </div>
     </div>
@@ -964,7 +1104,10 @@ class Router {
   }
 
   showGroupMgr() {
-    openModal('📁 그룹 관리', `<div class="space-y-2 mb-4">${store.groups.map((g,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl"><span class="flex-1 font-bold">${g}</span><button onclick="router.delGroup(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')}</div><form id="gf"><div class="flex gap-2"><input name="g" placeholder="새 그룹명" class="flex-1 p-3 border rounded-xl font-bold"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`, 'max-w-md');
+    openModal('📁 지역 그룹 (드래그로 순서 변경)', `
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700">💡 ⋮⋮ 아이콘을 드래그해 순서를 바꾸면 매물 등록/필터의 지역 그룹 순서에 반영됩니다.</div>
+      <div id="groupList" class="space-y-2 mb-4">${store.groups.map((g,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl" data-group="${esc(g)}"><i data-lucide="grip-vertical" class="drag-handle w-4 h-4 text-slate-400 cursor-move"></i><span class="flex-1 font-bold">${esc(g)}</span><button onclick="router.delGroup(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')||'<p class="text-xs text-slate-400 text-center py-4">등록된 지역 그룹이 없습니다</p>'}</div>
+      <form id="gf"><div class="flex gap-2"><input name="g" placeholder="새 지역 그룹명" class="flex-1 p-3 border rounded-xl font-bold"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`, 'max-w-md');
     document.getElementById('gf').onsubmit = async e => {
       e.preventDefault();
       const v = e.target.g.value.trim();
@@ -973,8 +1116,26 @@ class Router {
         await API.setAll('groups', store.groups);
         this.showGroupMgr();
         await this.renderAdminTab();
+      } else if (v) {
+        toast('이미 존재하는 지역 그룹입니다', 'error');
       }
     };
+    setTimeout(() => {
+      const list = document.getElementById('groupList');
+      if (list && typeof Sortable !== 'undefined') {
+        Sortable.create(list, {
+          handle: '.drag-handle',
+          animation: 150,
+          onEnd: async () => {
+            store.groups = [...list.querySelectorAll('[data-group]')].map(el => el.dataset.group);
+            await API.setAll('groups', store.groups);
+            this.showGroupMgr();
+            await this.renderAdminTab();
+            toast('지역 그룹 순서 변경됨', 'success');
+          }
+        });
+      }
+    }, 100);
     lucide.createIcons();
   }
   async delGroup(i) {
@@ -986,7 +1147,7 @@ class Router {
   }
 
   showPropForm(pid=null) {
-    const p = pid?store.prop(pid):{id:'',name:'',group:store.groups[0]||'서울',location:'',address:'',price:100000,cost:40000,images:[],mainImage:0,description:'',manager:'',customFields:[],repair:'완료',cleaning:'완료',gas:'도시가스',internet:'',recycleDay:'',password:'',office:'',guide:'',hidden:false,excludeFromStats:false};
+    const p = pid?store.prop(pid):{id:'',name:'',group:store.groups[0]||'서울',location:'',address:'',price:100000,priceWeek:'',mgmtFeeWeek:'',cleanFee:'',images:[],mainImage:0,description:'',manager:'',customFields:[],repair:'완료',cleaning:'완료',gas:'도시가스',water:'',electric:'',internet:'',recycleDay:'',mainDoorPassword:'',password:'',officePhone:'',mgmtDueDate:'',officeAccount:'',guide:'',hidden:false,excludeFromStats:false};
     if (!p.images && p.image) p.images = [p.image];
     if (!p.images) p.images = [];
     if (!p.customFields) p.customFields = [];
@@ -994,17 +1155,26 @@ class Router {
     this._tempMainImage = p.mainImage || 0;
     openModal(pid?'✏️ 매물 수정':'🆕 매물 등록', `<form id="pf" class="space-y-4">
     <div class="grid grid-cols-2 gap-3">
-      <input name="name" value="${p.name}" placeholder="숙소명" class="p-3 border rounded-xl font-bold" required>
-      <select name="group" class="p-3 border rounded-xl font-bold">${store.groups.map(g=>`<option ${p.group===g?'selected':''}>${g}</option>`).join('')}</select>
+      <div><label class="text-[10px] font-black text-slate-400 uppercase">숙소명</label><input name="name" value="${esc(p.name)}" placeholder="숙소명" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
+      <div><label class="text-[10px] font-black text-slate-400 uppercase">지역 그룹</label><select name="group" class="w-full p-3 border rounded-xl font-bold mt-1">${store.groups.map(g=>`<option value="${esc(g)}" ${p.group===g?'selected':''}>${esc(g)}</option>`).join('')}</select></div>
     </div>
     <input name="location" value="${p.location||''}" placeholder="위치" class="w-full p-3 border rounded-xl font-bold" required>
-    <input name="address" value="${p.address||''}" placeholder="상세주소" class="w-full p-3 border rounded-xl font-bold">
-    <div class="grid grid-cols-2 gap-3">
-      <div><label class="text-[10px] font-black text-blue-500">판매가 (1박)</label><input type="number" name="price" value="${p.price}" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1" required></div>
-      <div><label class="text-[10px] font-black text-slate-400">원가</label><input type="number" name="cost" value="${p.cost}" class="w-full p-3 border rounded-xl font-black text-slate-500 mt-1" required></div>
+    <input name="address" value="${p.address||''}" placeholder="상세위치" class="w-full p-3 border rounded-xl font-bold">
+    <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+      <p class="text-xs font-black text-blue-700 uppercase mb-3">💰 기준가</p>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-[10px] font-black text-blue-500">판매가 (1박)</label><input type="number" name="price" id="pfPrice" value="${p.price??0}" min="0" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1" required></div>
+        <div><label class="text-[10px] font-black text-blue-500">판매가 (주당)</label><input type="number" name="priceWeek" id="pfPriceWeek" value="${p.priceWeek??''}" min="0" placeholder="주단위(단기임대)" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1"></div>
+        <div><label class="text-[10px] font-black text-slate-500">관리비 (주당)</label><input type="number" name="mgmtFeeWeek" value="${p.mgmtFeeWeek??''}" min="0" class="w-full p-3 border rounded-xl font-black text-slate-600 mt-1"></div>
+        <div><label class="text-[10px] font-black text-slate-500">청소비 (1회)</label><input type="number" name="cleanFee" value="${p.cleanFee??''}" min="0" class="w-full p-3 border rounded-xl font-black text-slate-600 mt-1"></div>
+      </div>
+      <p class="text-[10px] text-blue-600 font-bold mt-2">💡 판매가(주당) 입력 시 <b>1박 = 주당 ÷ 6</b> (1,000원 단위 반올림)으로 자동 계산됩니다. 계산 후 1박 금액을 직접 수정해도 됩니다.</p>
     </div>
     <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-      <p class="text-xs font-black text-blue-700 uppercase mb-3">📷 이미지 업로드 (다중, 각 10MB 이하)</p>
+      <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <p class="text-xs font-black text-blue-700 uppercase">📷 이미지 업로드 (다중, 각 10MB 이하)</p>
+        ${pid?`<button type="button" onclick="router.downloadPropImages()" class="bg-white border-2 border-blue-300 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-black">⬇ 기존 이미지 전체 다운로드</button>`:''}
+      </div>
       <input type="file" id="imgUpload" accept="image/*" multiple class="w-full p-3 border-2 border-dashed border-blue-300 rounded-xl bg-white font-bold text-sm cursor-pointer">
       <p class="text-[10px] text-slate-500 font-bold mt-2">💡 ⭐ 클릭으로 대표 이미지 설정</p>
       <div id="imgPreview" class="grid grid-cols-4 gap-2 mt-3"></div>
@@ -1014,8 +1184,17 @@ class Router {
       <p class="text-xs font-black text-slate-400 uppercase">기본 운영 정보</p>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="text-[10px] font-black">담당매니저 🔔</label><select name="manager" class="w-full p-3 border rounded-xl font-bold mt-1"><option value="">-</option>${store.users.filter(u=>u.role==='Manager').map(u=>`<option value="${u.id}" ${p.manager===u.id?'selected':''}>${u.name}</option>`).join('')}</select></div>
-        ${[['repair','수리여부',p.repair],['cleaning','입주청소',p.cleaning],['gas','도시가스',p.gas],['internet','인터넷',p.internet],['recycleDay','분리수거일',p.recycleDay],['password','비밀번호',p.password],['office','관리실',p.office]].map(([k,l,v])=>`<div><label class="text-[10px] font-black">${l}</label><input name="${k}" value="${v||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}
-        <div class="col-span-2"><label class="text-[10px] font-black">이용안내 링크</label><input name="guide" value="${p.guide||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
+        ${[['repair','수리',p.repair],['cleaning','입주청소',p.cleaning],['internet','인터넷',p.internet],['gas','도시가스',p.gas],['water','수도',p.water],['electric','전기',p.electric],['recycleDay','분리수거일',p.recycleDay],['mainDoorPassword','공동현관(1층) 비밀번호',p.mainDoorPassword],['password','현관 비밀번호',p.password]].map(([k,l,v])=>`<div><label class="text-[10px] font-black">${l}</label><input name="${k}" value="${v||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}
+      </div>
+      <div class="border-t-2 border-slate-200 pt-4 mt-1">
+        <p class="text-xs font-black text-slate-500 uppercase mb-3">🏢 관리사무소</p>
+        <div class="grid grid-cols-2 gap-3">
+          ${[['officePhone','전화번호',p.officePhone],['mgmtDueDate','관리비 마감일',p.mgmtDueDate]].map(([k,l,v])=>`<div><label class="text-[10px] font-black">${l}</label><input name="${k}" value="${v||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>`).join('')}
+          <div class="col-span-2"><label class="text-[10px] font-black">계좌번호</label><input name="officeAccount" value="${p.officeAccount||''}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
+        </div>
+      </div>
+      <div class="border-t-2 border-slate-200 pt-4">
+        <label class="text-[10px] font-black">이용안내 링크</label><input name="guide" value="${p.guide||''}" class="w-full p-3 border rounded-xl font-bold mt-1">
       </div>
     </div>
     <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
@@ -1053,6 +1232,17 @@ class Router {
     
     this._refreshImagePreview();
     
+    // 판매가(주당) 입력 시 1박 자동 계산 (÷6, 1,000원 단위 반올림)
+    const pw = document.getElementById('pfPriceWeek');
+    const pn = document.getElementById('pfPrice');
+    if (pw && pn) {
+      pw.addEventListener('input', () => {
+        const w = num(pw.value);
+        if (!w) return;
+        pn.value = round1000(w / 6);
+      });
+    }
+
     document.getElementById('imgUpload').onchange = async e => {
       const files = [...e.target.files];
       showLoading(true);
@@ -1077,6 +1267,9 @@ class Router {
       d.customFields = [...document.querySelectorAll('[data-cf-idx]')].map(el => ({label: el.querySelector('.cf-label').value.trim(), value: el.querySelector('.cf-value').value.trim()})).filter(cf => cf.label);
       d.hidden = !!d.hidden;
       d.excludeFromStats = d.excludeFromStats === 'true';
+      ['price','priceWeek','mgmtFeeWeek','cleanFee'].forEach(k => { d[k] = (d[k] === '' || d[k] === undefined) ? '' : num(d[k]); });
+      // '원가'는 UI에서 제거됐지만 과거 데이터는 보존한다
+      if (pid) { const prev = store.prop(pid); if (prev && prev.cost !== undefined) d.cost = prev.cost; }
       if (pid) d.id = pid;
       const oldManager = pid ? store.prop(pid)?.manager : null;
       showLoading(true);
@@ -1103,9 +1296,46 @@ class Router {
   _refreshImagePreview() {
     const c = document.getElementById('imgPreview');
     if (!c) return;
-    c.innerHTML = this._tempImages.length ? this._tempImages.map((img,i)=>`<div class="relative"><img src="${img}" class="w-full h-24 object-cover rounded-lg border-2 ${this._tempMainImage===i?'border-amber-500 ring-2 ring-amber-200':'border-slate-200'}"><button type="button" onclick="router._setMainImage(${i})" class="absolute top-1 left-1 w-6 h-6 ${this._tempMainImage===i?'bg-amber-500':'bg-white/80'} rounded-full text-xs">⭐</button><button type="button" onclick="router._removeImage(${i})" class="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs">×</button>${this._tempMainImage===i?'<span class="absolute bottom-1 left-1 right-1 text-[9px] font-black bg-amber-500 text-white px-1 rounded text-center">대표</span>':''}</div>`).join('') : '<p class="col-span-4 text-center text-xs text-slate-400 py-6">이미지 없음</p>';
+    c.innerHTML = this._tempImages.length ? this._tempImages.map((img,i)=>`<div class="relative"><img src="${img}" class="w-full h-24 object-cover rounded-lg border-2 ${this._tempMainImage===i?'border-amber-500 ring-2 ring-amber-200':'border-slate-200'}"><button type="button" onclick="router._setMainImage(${i})" class="absolute top-1 left-1 w-6 h-6 ${this._tempMainImage===i?'bg-amber-500':'bg-white/80'} rounded-full text-xs">⭐</button><button type="button" onclick="router._removeImage(${i})" class="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs">×</button><button type="button" title="이미지 다운로드" onclick="router.downloadPropImage(${i})" class="absolute bottom-1 right-1 w-6 h-6 bg-white/90 text-slate-700 rounded-full text-[10px] leading-none">⬇</button>${this._tempMainImage===i?'<span class="absolute bottom-1 left-1 right-1 text-[9px] font-black bg-amber-500 text-white px-1 rounded text-center">대표</span>':''}</div>`).join('') : '<p class="col-span-4 text-center text-xs text-slate-400 py-6">이미지 없음</p>';
   }
   _setMainImage(i) { this._tempMainImage = i; this._refreshImagePreview(); }
+
+  // 업로드된 매물 이미지 다운로드 (data URL / 원격 URL 모두 지원)
+  async downloadPropImage(i) {
+    const src = (this._tempImages || [])[i];
+    if (!src) { toast('이미지를 찾을 수 없습니다', 'error'); return; }
+    const base = (document.querySelector('#pf [name="name"]')?.value || 'property').replace(/[^a-zA-Z0-9가-힣_-]/g, '_');
+    try {
+      let href = src;
+      let revoke = null;
+      if (!src.startsWith('data:')) {
+        const blob = await (await fetch(src)).blob();
+        href = URL.createObjectURL(blob);
+        revoke = href;
+      }
+      const ext = (src.match(/^data:image\/(\w+)/)?.[1] || src.split('?')[0].split('.').pop() || 'jpg').slice(0, 4);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `${base}_${i + 1}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      if (revoke) setTimeout(() => URL.revokeObjectURL(revoke), 3000);
+    } catch (e) {
+      window.open(src, '_blank');
+      toast('브라우저 제한으로 새 탭에서 열었습니다', 'warning');
+    }
+  }
+
+  async downloadPropImages() {
+    const list = this._tempImages || [];
+    if (!list.length) { toast('다운로드할 이미지가 없습니다', 'warning'); return; }
+    for (let i = 0; i < list.length; i++) {
+      await this.downloadPropImage(i);
+      await new Promise(res => setTimeout(res, 350)); // 브라우저 연속 다운로드 차단 방지
+    }
+    toast(`📥 ${list.length}개 다운로드 시작`, 'success');
+  }
   _removeImage(i) { this._tempImages.splice(i,1); if(this._tempMainImage>=this._tempImages.length)this._tempMainImage=0; this._refreshImagePreview(); }
   _addCustomField() {
     const c = document.getElementById('customFields');
@@ -1139,7 +1369,7 @@ class Router {
     <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl mb-4 flex justify-between items-center"><h3 class="text-2xl font-black">📊 ${titleLabel}</h3><p class="text-3xl font-black text-amber-400">${fmt(this._getFilteredExpenses().reduce((s,e)=>s+e.amount,0))}</p></div>
     <div id="exp-body"></div>`;
     if (this.expenseMode === 'integrated') this.admExpIntegrated(); else this.admExpIndividual();
-    document.getElementById('expImport').onchange = e => this.importExpensesExcel(e.target.files[0]);
+    document.getElementById('expImport').onchange = e => { const file = e.target.files[0]; e.target.value = ''; this.importExpensesExcel(file); };
     lucide.createIcons();
   }
   
@@ -1236,18 +1466,32 @@ class Router {
   editExpenseDirect(id) {
     const e = store.expenses.find(x => x.id == id);
     if (!e) return;
-    if (e.syncKey?.startsWith('net_')) { toast('🔗 자동연동 항목은 기타관리에서 수정','warning'); return; }
+    if (e.syncKey?.startsWith('net_')) { toast('🔗 자동연동 항목은 기타관리에서 수정', 'warning'); return; }
     const p = store.prop(e.propId);
-    openModal(`✏️ 지출 수정 - ${p?.name||'-'}`, `<form id="ee" class="space-y-3"><div class="grid grid-cols-2 gap-3"><select name="majorCat" id="meCat" class="p-3 border rounded-xl font-bold" onchange="document.getElementById('eeSc').innerHTML=(${JSON.stringify(store.subCats)})[this.value].map(x=>'<option '+(x==='${e.category}'?'selected':'')+'>'+x+'</option>').join('')">${store.majorCats.map(m=>`<option ${e.majorCat===m?'selected':''}>${m}</option>`).join('')}</select><select name="category" id="eeSc" class="p-3 border rounded-xl font-bold">${(store.subCats[e.majorCat]||[]).map(s=>`<option ${e.category===s?'selected':''}>${s}</option>`).join('')}</select></div><input type="date" name="date" value="${e.date}" class="w-full p-3 border rounded-xl font-bold" required><input type="number" name="amount" value="${e.amount}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required><input name="memo" value="${e.memo||''}" placeholder="메모" class="w-full p-3 border rounded-xl font-bold"><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">수정</button></form>`, 'max-w-xl');
+    openModal(`✏️ 지출 수정 - ${p?.name || '-'}`, `<form id="ee" class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <select name="majorCat" id="eeMc" class="p-3 border rounded-xl font-bold" required>${store.majorCats.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('')}</select>
+        <select name="category" id="eeSc" class="p-3 border rounded-xl font-bold" required></select>
+      </div>
+      <input type="date" name="date" value="${e.date || todayStr()}" class="w-full p-3 border rounded-xl font-bold" required>
+      <input type="number" name="amount" value="${e.amount}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required>
+      <input name="memo" value="${esc(e.memo || '')}" placeholder="메모" class="w-full p-3 border rounded-xl font-bold">
+      <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">수정</button>
+    </form>`, 'max-w-xl');
+    this._bindCatSelects('eeMc', 'eeSc', e.majorCat, e.category);
     document.getElementById('ee').onsubmit = async ev => {
       ev.preventDefault();
       const d = Object.fromEntries(new FormData(ev.target));
-      Object.assign(e, { ...d, amount: +d.amount });
-      await API.update('expenses', e.id, e);
-      toast('수정됨','success'); closeModal(); await this.renderAdminTab();
+      if (!d.category) { toast('소분류를 선택하세요', 'error'); return; }
+      showLoading(true);
+      try {
+        Object.assign(e, { ...d, amount: num(d.amount), propId: e.propId });
+        await API.update('expenses', e.id, e);
+        toast('수정됨', 'success'); closeModal(); await this.renderAdminTab();
+      } catch (err) { toast('실패: ' + err.message, 'error'); } finally { showLoading(false); }
     };
   }
-  
+
   exportExpensesExcel() {
     const expenses = this._getFilteredExpenses();
     const f = this._expFilter;
@@ -1259,25 +1503,100 @@ class Router {
     toast('📥 다운로드 완료','success');
   }
   
+  // 엑셀 날짜 → 'YYYY-MM-DD' (공용 헬퍼 사용. 해석 불가 시 '' 반환 → 해당 행 제외)
+  _excelDate(v) { return toDateStr(v); }
+
   async importExpensesExcel(file) {
     if (!file) return;
-    if (!confirm('엑셀 데이터를 추가합니다. 계속?')) return;
     showLoading(true);
     try {
-      const data = await file.arrayBuffer();
-      const wb = XLSX.read(data);
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-      let added = 0;
-      for (const row of rows) {
-        const prop = store.properties.find(p => p.name === row['숙소']);
-        if (!prop) continue;
-        await store.addExpense({ propId:prop.id, majorCat:row['대분류']||'변동지출', category:row['소분류']||'기타', amount:+row['금액']||0, date:row['날짜']||todayStr(), memo:row['메모']||'' });
-        added++;
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { cellDates: true });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      if (!rows.length) { toast('엑셀에 데이터가 없습니다', 'error'); return; }
+
+      const norm = v => String(v ?? '').replace(/\s/g, '').toLowerCase();
+      const pick = (row, keys) => {
+        for (const k of Object.keys(row)) if (keys.includes(norm(k))) return row[k];
+        return '';
+      };
+      const propByName = new Map(store.properties.map(p => [norm(p.name), p]));
+      const fallbackMajor = store.majorCats.includes('변동지출') ? '변동지출' : (store.majorCats[0] || '변동지출');
+
+      const parsed = [], skipped = [], newSubs = [];
+      rows.forEach((row, idx) => {
+        const line = idx + 2;
+        const rawName = pick(row, ['숙소', '숙소명', '매물', '매물명', 'property']);
+        const prop = propByName.get(norm(rawName));
+        if (!prop) { skipped.push(`${line}행: 숙소 '${String(rawName) || '(빈칸)'}' 미등록`); return; }
+        const amount = num(pick(row, ['금액', '지출액', '지출금액', 'amount']));
+        if (!amount) { skipped.push(`${line}행: 금액 없음`); return; }
+        const rawDate = pick(row, ['날짜', '일자', 'date']);
+        const date = this._excelDate(rawDate);
+        if (rawDate !== '' && !date) { skipped.push(`${line}행: 날짜 '${String(rawDate)}' 형식을 알 수 없음 (YYYY-MM-DD 권장)`); return; }
+        if (!date) { skipped.push(`${line}행: 날짜 없음`); return; }
+
+        let majorCat = String(pick(row, ['대분류', '분류', 'majorcat']) || '').trim();
+        if (!store.majorCats.includes(majorCat)) majorCat = fallbackMajor;
+        let category = String(pick(row, ['소분류', '카테고리', 'category']) || '').trim() || '기타';
+        // 소분류가 등록돼 있지 않으면 통합 표에 열이 없어 조회되지 않으므로 자동 등록한다
+        if (!(store.subCats[majorCat] || []).includes(category)) newSubs.push([majorCat, category]);
+
+        parsed.push({
+          propId: prop.id, majorCat, category, amount, date,
+          memo: String(pick(row, ['메모', '비고', 'memo']) || '')
+        });
+      });
+
+      if (!parsed.length) {
+        showLoading(false);
+        openModal('📤 엑셀 업로드 실패', `<div class="space-y-3">
+          <p class="font-bold text-red-600">등록 가능한 행이 없습니다. (총 ${rows.length}행)</p>
+          <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-xs font-bold text-red-700 max-h-60 overflow-y-auto space-y-1">${skipped.map(x => `<p>${esc(x)}</p>`).join('')}</div>
+          <p class="text-xs text-slate-500 font-bold">필수 열: <b>숙소</b>, <b>금액</b> · 선택 열: 날짜, 대분류, 소분류, 메모<br>숙소명은 등록된 매물명과 정확히 일치해야 합니다. (📥 엑셀↓로 받은 양식을 그대로 쓰면 안전합니다)</p>
+        </div>`, 'max-w-xl');
+        return;
       }
-      toast(`✅ ${added}건 추가`,'success');
+
+      const uniqSubs = [...new Set(newSubs.map(x => x.join('||')))].map(x => x.split('||'));
+      const msg = `총 ${rows.length}행 중 ${parsed.length}건을 등록합니다.\n`
+        + (skipped.length ? `제외 ${skipped.length}건 (숙소명 불일치/금액 없음)\n` : '')
+        + (uniqSubs.length ? `신규 소분류 ${uniqSubs.length}개 자동 등록: ${uniqSubs.map(x => x[1]).join(', ')}\n` : '')
+        + '\n계속하시겠습니까?';
+      if (!confirm(msg)) { showLoading(false); return; }
+
+      // 신규 소분류 먼저 등록 (통합 표 컬럼 생성)
+      if (uniqSubs.length) {
+        uniqSubs.forEach(([mc, sc]) => {
+          store.subCats[mc] = store.subCats[mc] || [];
+          if (!store.subCats[mc].includes(sc)) store.subCats[mc].push(sc);
+        });
+        await API.setAll('subCats', store.subCats);
+      }
+
+      let added = 0;
+      for (const row of parsed) {
+        try { await store.addExpense(row); added++; } catch (err) { skipped.push(`등록 실패: ${err.message}`); }
+      }
+
+      // 업로드한 내역이 현재 기간 필터 밖이면 보이지 않으므로 필터를 확장한다
+      const dates = parsed.map(x => x.date).sort();
+      const f = this._expFilter || {};
+      const from = dates[0] < (f.from || '9999') ? dates[0] : f.from;
+      const to = dates[dates.length - 1] > (f.to || '0000') ? dates[dates.length - 1] : f.to;
+      if (from !== f.from || to !== f.to) this._expFilter = { period: 'custom', from, to };
+
       await this.renderAdminTab();
-    } catch(e) { toast('실패: '+e.message,'error'); }
-    finally { showLoading(false); }
+      showLoading(false);
+      openModal('📤 엑셀 업로드 완료', `<div class="space-y-3">
+        <p class="text-2xl font-black text-green-600">✅ ${added}건 등록 완료</p>
+        <p class="text-sm font-bold text-slate-600">조회 기간: <b>${this._expFilter.from} ~ ${this._expFilter.to}</b> (업로드한 내역이 모두 보이도록 자동 조정됨)</p>
+        ${uniqSubs.length ? `<p class="text-xs font-bold text-blue-600">신규 소분류 ${uniqSubs.length}개가 카테고리에 추가되었습니다.</p>` : ''}
+        ${skipped.length ? `<div><p class="text-xs font-black text-amber-700 uppercase mb-2">⚠️ 제외된 ${skipped.length}건</p><div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs font-bold text-amber-700 max-h-52 overflow-y-auto space-y-1">${skipped.map(x => `<p>${esc(x)}</p>`).join('')}</div></div>` : ''}
+      </div>`, 'max-w-xl');
+    } catch (e) {
+      toast('실패: ' + e.message, 'error');
+    } finally { showLoading(false); }
   }
 
   // ⭐ 카테고리 관리 (드래그앤드롭 + 인라인 수정)
@@ -1354,17 +1673,47 @@ class Router {
   async addSubCat(e,mc){e.preventDefault();const v=e.target.s.value.trim();if(v){store.subCats[mc]=store.subCats[mc]||[];store.subCats[mc].push(v);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}}
   async delSubCat(mc,j){if(!confirm('삭제?'))return;store.subCats[mc].splice(j,1);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}
 
-  showExpenseForm(propId=null) {
-    openModal('💳 지출 등록', `<form id="ef" class="space-y-4"><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}" ${propId==p.id?'selected':''}>${p.name}</option>`).join('')}</select><div class="grid grid-cols-2 gap-3"><select name="majorCat" id="mcSel" class="p-3 border rounded-xl font-bold" required onchange="document.getElementById('scSel').innerHTML=(${JSON.stringify(store.subCats)})[this.value].map(x=>'<option>'+x+'</option>').join('')">${store.majorCats.map(m=>`<option>${m}</option>`).join('')}</select><select name="category" id="scSel" class="p-3 border rounded-xl font-bold" required>${(store.subCats[store.majorCats[0]]||[]).map(s=>`<option>${s}</option>`).join('')}</select></div><input type="date" name="date" value="${todayStr()}" class="w-full p-3 border rounded-xl font-bold" required><input type="number" name="amount" placeholder="금액" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required><input name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold"><button class="w-full bg-red-500 text-white py-4 rounded-xl font-black uppercase">지출 등록</button></form>`, 'max-w-xl');
+  // 대분류 → 소분류 연동 (인라인 onchange 속성 파손 문제 해결)
+  _bindCatSelects(majorId, subId, selMajor = null, selSub = null) {
+    const mc = document.getElementById(majorId);
+    const sc = document.getElementById(subId);
+    if (!mc || !sc) return;
+    if (selMajor && store.majorCats.includes(selMajor)) mc.value = selMajor;
+    const fill = keep => {
+      const subs = store.subCats[mc.value] || [];
+      sc.innerHTML = subs.length
+        ? subs.map(x => `<option value="${esc(x)}" ${keep === x ? 'selected' : ''}>${esc(x)}</option>`).join('')
+        : '<option value="">— 소분류 없음 (📁 카테고리에서 추가) —</option>';
+    };
+    fill(selSub);
+    mc.addEventListener('change', () => fill(null));
+  }
+
+  showExpenseForm(propId = null) {
+    if (!store.properties.length) { toast('등록된 매물이 없습니다', 'error'); return; }
+    if (!store.majorCats.length) { toast('지출 카테고리를 먼저 등록하세요', 'error'); return; }
+    openModal('💳 지출 등록', `<form id="ef" class="space-y-4">
+      <select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p => `<option value="${p.id}" ${propId == p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+      <div class="grid grid-cols-2 gap-3">
+        <select name="majorCat" id="mcSel" class="p-3 border rounded-xl font-bold" required>${store.majorCats.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('')}</select>
+        <select name="category" id="scSel" class="p-3 border rounded-xl font-bold" required></select>
+      </div>
+      <input type="date" name="date" value="${todayStr()}" class="w-full p-3 border rounded-xl font-bold" required>
+      <input type="number" name="amount" placeholder="금액" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required>
+      <input name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold">
+      <button class="w-full bg-red-500 text-white py-4 rounded-xl font-black uppercase">지출 등록</button>
+    </form>`, 'max-w-xl');
+    this._bindCatSelects('mcSel', 'scSel');
     document.getElementById('ef').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
+      if (!d.category) { toast('소분류를 선택하세요 (📁 카테고리에서 추가)', 'error'); return; }
       showLoading(true);
-      try { await store.addExpense(d); toast('등록','success'); closeModal(); await this.renderAdminTab(); }
-      catch(err) { toast('실패','error'); } finally { showLoading(false); }
+      try { await store.addExpense(d); toast('등록', 'success'); closeModal(); await this.renderAdminTab(); }
+      catch (err) { toast('실패: ' + err.message, 'error'); } finally { showLoading(false); }
     };
   }
-  
+
   async delExpense(id) {
     if (!confirm('삭제?')) return;
     showLoading(true);
@@ -1378,9 +1727,9 @@ class Router {
     const year = cur.getFullYear(), month = cur.getMonth();
     c.innerHTML = `<div class="flex justify-between items-center mb-6 flex-wrap gap-3"><h2 class="text-3xl font-black">📅 예약 관리</h2><div class="flex gap-2 items-center flex-wrap"><button onclick="router.bkPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router.bkNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button onclick="router.bkToday()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button><div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.bkMode='month';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='month'?'bg-white shadow':'text-slate-500'}">월별</button><button onclick="router.bkMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='list'?'bg-white shadow':'text-slate-500'}">개별</button></div></div></div><div id="bk-body"></div>`;
     if (this.bkMode === 'list') {
-      document.getElementById('bk-body').innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>`<div class="bg-white p-4 rounded-2xl border"><h4 class="font-black mb-3">${p.name}</h4>${buildCalendar(year, month, p.id, 'router.onCalendarClick')}</div>`).join('')}</div>`;
+      document.getElementById('bk-body').innerHTML = `<div class="mb-3">${calendarLegend()}</div><div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>`<div class="bg-white p-4 rounded-2xl border"><h4 class="font-black mb-3">${esc(p.name)}</h4>${buildCalendar(year, month, p.id, 'router.onCalendarClick')}</div>`).join('')}</div>`;
     } else {
-      let html = `<div class="bg-white p-6 rounded-2xl border"><h3 class="text-xl font-black mb-4">${year}년 ${month+1}월 전체 예약</h3>`;
+      let html = `<div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4 flex-wrap gap-2"><h3 class="text-xl font-black">${year}년 ${month+1}월 전체 예약</h3>${calendarLegend()}</div>`;
       const first = new Date(year, month, 1);
       const days = new Date(year, month+1, 0).getDate();
       const startDow = first.getDay();
@@ -1388,8 +1737,7 @@ class Router {
       for (let i=0; i<startDow; i++) html += `<div class="min-h-[120px] bg-slate-50/50 rounded-lg"></div>`;
       for (let d=1; d<=days; d++) {
         const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const bks = store.bookings.filter(b => ds>=b.checkIn && ds<b.checkOut);
-        html += `<div class="min-h-[120px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${bks.slice(0,4).map(b=>{const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 cursor-pointer" style="background:${pl?.color||'#2563eb'}20;color:${pl?.color||'#2563eb'}" onclick="router.showBookingForm(${b.propId},store.bookings.find(x=>x.id===${b.id}))">${store.prop(b.propId)?.name?.slice(0,6)||''}·${b.guest.slice(0,3)}</div>`}).join('')}${bks.length>4?`<div class="text-[8px] text-slate-400 mt-0.5">+${bks.length-4}건</div>`:''}</div>`;
+        html += `<div class="min-h-[120px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${calendarDayBadges(ds, store.bookings, 'router.onCalendarClick')}</div>`;
       }
       html += `</div></div>`;
       document.getElementById('bk-body').innerHTML = html;
@@ -1539,7 +1887,7 @@ class Router {
     c.innerHTML = `<div class="flex justify-between items-center mb-6"><div><h2 class="text-3xl font-black">✨ AI 인사이트</h2><p class="text-slate-500 mt-1">데이터 분석 기반 자동 운영 개선 추천 (${insights.length}건)</p></div><button onclick="router.renderAdminTab()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm"><i data-lucide="refresh-cw" class="w-4 h-4 inline"></i> 다시 분석</button></div>
     <div class="grid grid-cols-3 gap-4 mb-6 mobile-stack"><div class="bg-red-50 border-2 border-red-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-red-600 uppercase">⚠️ 경고</p><p class="text-3xl font-black text-red-700 mt-2">${grouped.warning.length}건</p></div><div class="bg-blue-50 border-2 border-blue-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-blue-600 uppercase">ℹ️ 알림</p><p class="text-3xl font-black text-blue-700 mt-2">${grouped.info.length}건</p></div><div class="bg-green-50 border-2 border-green-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-green-600 uppercase">✅ 추천</p><p class="text-3xl font-black text-green-700 mt-2">${grouped.success.length}건</p></div></div>
     <div class="space-y-3">${insights.map((i,idx)=>{const colors={warning:'bg-red-50 border-red-200',info:'bg-blue-50 border-blue-200',success:'bg-green-50 border-green-200'};return `<div class="${colors[i.level]} border-2 rounded-2xl p-5 flex items-start gap-4"><div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center flex-shrink-0"><i data-lucide="${i.icon||'info'}" class="w-6 h-6"></i></div><div class="flex-1 min-w-0"><h3 class="font-black text-lg">${i.title}</h3><p class="text-sm text-slate-700 mt-1 font-medium">${i.desc}</p></div>${i.action?`<button onclick="router.actOnInsight('${i.action}',${i.propId||'null'})" class="bg-slate-900 text-white px-4 py-2 rounded-xl font-black text-xs flex-shrink-0">조치 →</button>`:''}</div>`}).join('')}</div>
-    <div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-6 rounded-2xl mt-6"><h3 class="font-black text-lg mb-3">💡 AI 운영 팁</h3><div class="grid grid-cols-2 gap-3 text-sm mobile-stack"><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">📈 평균 가동률</p><p class="text-2xl font-black">${store.properties.length?Math.round(store.properties.filter(p=>getBookingForDate(p.id,todayStr())).length/store.properties.length*100):0}%</p></div><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">💰 평균 객단가</p><p class="text-2xl font-black">${fmt(store.bookings.length?Math.round(store.bookings.reduce((s,b)=>s+(+b.price||0),0)/store.bookings.length):0)}</p></div></div></div>`;
+    <div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-6 rounded-2xl mt-6"><h3 class="font-black text-lg mb-3">💡 AI 운영 팁</h3><div class="grid grid-cols-2 gap-3 text-sm mobile-stack"><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">📈 평균 가동률</p><p class="text-2xl font-black">${store.properties.length?Math.round(store.properties.filter(p=>getBookingForDate(p.id,todayStr())).length/store.properties.length*100):0}%</p></div><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">💰 평균 객단가</p><p class="text-2xl font-black">${fmt(store.bookings.length?Math.round(store.bookings.reduce((s,b)=>s+bkRev(b),0)/store.bookings.length):0)}</p></div></div></div>`;
     lucide.createIcons();
   }
   
@@ -1634,17 +1982,17 @@ class Router {
       b.checkIn && b.checkIn >= f.from && b.checkIn <= f.to && targetIds.has(b.propId)
     );
     
-    const total = filteredBookings.reduce((s,b) => s + (+b.price||0), 0);
+    const total = filteredBookings.reduce((s,b) => s + bkRev(b), 0);
     const byProp = targetProps.map(p => ({
       p,
-      t: filteredBookings.filter(b => b.propId === p.id).reduce((s,b) => s + (+b.price||0), 0),
+      t: filteredBookings.filter(b => b.propId === p.id).reduce((s,b) => s + bkRev(b), 0),
       n: filteredBookings.filter(b => b.propId === p.id).length
     })).sort((a,b) => b.t - a.t);
     
     const byGroup = {};
     store.groups.forEach(g => {
       const gProps = targetProps.filter(p => p.group === g);
-      byGroup[g] = filteredBookings.filter(b => gProps.some(p => p.id === b.propId)).reduce((s,b) => s + (+b.price||0), 0);
+      byGroup[g] = filteredBookings.filter(b => gProps.some(p => p.id === b.propId)).reduce((s,b) => s + bkRev(b), 0);
     });
     
     const periodLabel = { day:'일', week:'주', month:'월', custom:'특정 기간' }[f.period] || '월';
@@ -1652,7 +2000,10 @@ class Router {
     
     c.innerHTML = `<div class="flex justify-between items-center mb-6 flex-wrap gap-3">
       <h2 class="text-3xl font-black">💰 매출 관리</h2>
-      <p class="text-sm font-bold text-slate-500">${periodLabel} · ${scopeLabel} · ${filteredBookings.length}건</p>
+      <div class="flex items-center gap-3 flex-wrap">
+        ${revenueBasisToggle()}
+        <p class="text-sm font-bold text-slate-500">${periodLabel} · ${scopeLabel} · ${filteredBookings.length}건</p>
+      </div>
     </div>
     
     <div class="bg-white p-4 rounded-2xl border mb-4">
@@ -1738,7 +2089,7 @@ class Router {
       filteredBookings.forEach(b => {
         if (!b.checkIn) return;
         const k = f.period === 'day' ? b.checkIn : b.checkIn.slice(0,7);
-        dayMap[k] = (dayMap[k]||0) + (+b.price||0);
+        dayMap[k] = (dayMap[k]||0) + bkRev(b);
       });
       const keys = Object.keys(dayMap).sort();
       const el = document.getElementById('sChart');
@@ -1857,10 +2208,10 @@ class Router {
       b.propId === propId && b.checkIn && b.checkIn >= f.from && b.checkIn <= f.to
     ).sort((a,b) => (b.checkIn||'').localeCompare(a.checkIn||''));
     
-    const total = bookings.reduce((s,b) => s + (+b.price||0), 0);
+    const total = bookings.reduce((s,b) => s + bkRev(b), 0);
     const byPlat = {};
     bookings.forEach(b => {
-      byPlat[b.platform] = (byPlat[b.platform]||0) + (+b.price||0);
+      byPlat[b.platform] = (byPlat[b.platform]||0) + bkRev(b);
     });
     
     openModal(`💰 ${p.name} - 매출 상세`, `
@@ -1912,7 +2263,7 @@ class Router {
                   <td class="px-3 py-2 font-black">${b.guest}</td>
                   <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[9px] font-black text-white" style="background:${pl?.color||'#666'}">${b.platform}</span></td>
                   <td class="px-3 py-2 text-center">${b.people}명</td>
-                  <td class="px-3 py-2 text-right font-black text-blue-600">${fmt(b.price)}</td>
+                  <td class="px-3 py-2 text-right font-black text-blue-600">${fmt(bkRev(b))}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -1928,9 +2279,9 @@ class Router {
   async delRecipient(uid){store.reportRecipients=store.reportRecipients.filter(x=>x!==uid);await API.setAll('reportRecipients',store.reportRecipients);await this.renderAdminTab()}
   
   genReport() {
-    const rev = store.bookings.reduce((s,b)=>s+(+b.price||0),0);
+    const rev = store.bookings.reduce((s,b)=>s+bkRev(b),0);
     const cost = store.expenses.filter(e=>e.majorCat!=='초기투자지출').reduce((s,e)=>s+(+e.amount||0),0);
-    const top = [...store.properties].sort((a,b)=>store.bookings.filter(x=>x.propId===b.id).reduce((s,x)=>s+(+x.price||0),0)-store.bookings.filter(x=>x.propId===a.id).reduce((s,x)=>s+(+x.price||0),0))[0];
+    const top = [...store.properties].sort((a,b)=>store.bookings.filter(x=>x.propId===b.id).reduce((s,x)=>s+bkRev(x),0)-store.bookings.filter(x=>x.propId===a.id).reduce((s,x)=>s+bkRev(x),0))[0];
     const critical = store.logs.filter(l=>l.special).slice(0,5);
     openModal('📝 AI 자동 보고서', `<div id="reportContent" class="space-y-5"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-xs font-black uppercase opacity-70 mb-2">📊 핵심 요약 (초기투자 제외)</p><p class="font-bold leading-relaxed">총 매출 <b>${fmt(rev)}</b>, 운영지출 <b>${fmt(cost)}</b> → 운영 순이익 <b>${fmt(rev-cost)}</b>. 최고 매출 숙소는 <b>${top?.name||'-'}</b>이며, 특이사항 ${critical.length}건 발생.</p></div><div><h4 class="font-black mb-3">📈 매출 현황</h4><div class="bg-slate-50 p-4 rounded-xl"><p class="text-sm">${store.bookings.length}건 예약 / 평균 ${fmt(store.bookings.length?Math.round(rev/store.bookings.length):0)}</p></div></div><div><h4 class="font-black mb-3">💳 주요 지출 TOP 3</h4><div class="bg-slate-50 p-4 rounded-xl space-y-2">${Object.entries(store.expenses.filter(e=>e.majorCat!=='초기투자지출').reduce((a,e)=>{a[e.category]=(a[e.category]||0)+(+e.amount||0);return a},{})).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`<div class="flex justify-between text-sm"><span class="font-bold">${k}</span><span class="font-black text-red-500">${fmt(v)}</span></div>`).join('')}</div></div><div><h4 class="font-black mb-3">🚨 특이사항</h4><div class="bg-red-50 p-4 rounded-xl space-y-2">${critical.length?critical.map(l=>`<p class="text-sm font-bold text-red-700">• ${l.message}</p>`).join(''):'<p class="text-sm text-slate-500">없음</p>'}</div></div><div class="flex gap-2 pt-4 border-t"><button onclick="window.print()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black">🖨️ 인쇄</button><button onclick="router.genReportPDF()" class="flex-1 bg-red-500 text-white py-3 rounded-xl font-black">📄 PDF</button><button onclick="(async()=>{await store.sendKakaoNotification('월간 보고서가 생성되었습니다');toast('수신자 '+store.reportRecipients.length+'명 발송 + 카톡 알림','success')})()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-black">📧 발송</button></div></div>`, 'max-w-3xl');
   }
@@ -2025,7 +2376,7 @@ class Router {
       const propIds = new Set(propsForStats.map(p => p.id));
       const filteredBookings = store.bookings.filter(b => b.checkIn && b.checkIn >= f.from && b.checkIn <= f.to && propIds.has(b.propId));
       const filteredExpenses = store.expenses.filter(e => e.date && e.date >= f.from && e.date <= f.to && propIds.has(e.propId));
-      const rev = filteredBookings.reduce((s,b)=>s+(+b.price||0),0);
+      const rev = filteredBookings.reduce((s,b)=>s+bkRev(b),0);
       const cAll = filteredExpenses.reduce((s,e)=>s+(+e.amount||0),0);
       const cInit = filteredExpenses.filter(e=>e.majorCat==='초기투자지출').reduce((s,e)=>s+(+e.amount||0),0);
       const cost = showAll ? cAll : (cAll - cInit);
@@ -2063,7 +2414,7 @@ class Router {
       const o = ops[p.id]||{};
       const myBks = store.bookings.filter(b=>b.propId===p.id);
       const myExp = store.expenses.filter(e=>e.propId===p.id&&e.majorCat!=='초기투자지출').reduce((s,e)=>s+(+e.amount||0),0);
-      const r = myBks.reduce((s,b)=>s+(+b.price||0),0);
+      const r = myBks.reduce((s,b)=>s+bkRev(b),0);
       const profitRate = r?(r-myExp)/r*100:0;
       if (profitRate < 30 && r > 0) aiRecs.push({prop:p,msg:`수익률 ${Math.round(profitRate)}% - 가격 인상 또는 비용 절감 필요`});
       if (myBks.length === 0) aiRecs.push({prop:p,msg:'예약 0건 - 마케팅 강화 필요'});
@@ -2098,11 +2449,11 @@ class Router {
   // ===== 고객 관리 =====
   admCustomers(c) {
     const map = {};
-    store.bookings.forEach(b=>{const k=(b.guest||'')+'|'+(b.contact||'');if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),last:'',bookings:[]};map[k].n++;map[k].t+=(+b.price||0);map[k].plats.add(b.platform);if(b.checkIn>map[k].last)map[k].last=b.checkIn;map[k].bookings.push(b)});
+    store.bookings.forEach(b=>{const k=(b.guest||'')+'|'+(b.contact||'');if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),last:'',bookings:[]};map[k].n++;map[k].t+=bkRev(b);map[k].plats.add(b.platform);if(b.checkIn>map[k].last)map[k].last=b.checkIn;map[k].bookings.push(b)});
     const list = Object.values(map).sort((a,b)=>(b.last||'').localeCompare(a.last||''));
     const platStats = {};
     store.platforms.forEach(p=>platStats[p.name]={count:0,revenue:0,color:p.color});
-    store.bookings.forEach(b=>{if(platStats[b.platform]){platStats[b.platform].count++;platStats[b.platform].revenue+=(+b.price||0)}});
+    store.bookings.forEach(b=>{if(platStats[b.platform]){platStats[b.platform].count++;platStats[b.platform].revenue+=bkRev(b)}});
     const totalRev = Object.values(platStats).reduce((s,p)=>s+p.revenue,0);
     c.innerHTML = `<div class="flex justify-between items-center mb-6"><div><h2 class="text-3xl font-black">👥 고객 관리</h2><p class="text-slate-500 mt-1">최근순 정렬 · 클릭하여 메모 작성</p></div><button onclick="router.showPlatformMgr()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">🎯 플랫폼 관리</button></div>
     <div class="grid grid-cols-4 gap-4 mb-6 mobile-stack"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">고객수</p><p class="text-2xl font-black mt-2">${list.length}명</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">재방문</p><p class="text-2xl font-black text-blue-600 mt-2">${list.filter(x=>x.n>1).length}명</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">평균객단가</p><p class="text-2xl font-black mt-2">${fmt(list.length?Math.round(list.reduce((s,x)=>s+x.t,0)/list.length):0)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">외국인</p><p class="text-2xl font-black mt-2">${list.filter(x=>x.nat&&x.nat!=='한국').length}명</p></div></div>
@@ -2120,11 +2471,11 @@ class Router {
 
   showCustomerDetail(key) {
     const map = {};
-    store.bookings.forEach(b=>{const k=(b.guest||'')+'|'+(b.contact||'');if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),bookings:[]};map[k].n++;map[k].t+=(+b.price||0);map[k].plats.add(b.platform);map[k].bookings.push(b)});
+    store.bookings.forEach(b=>{const k=(b.guest||'')+'|'+(b.contact||'');if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),bookings:[]};map[k].n++;map[k].t+=bkRev(b);map[k].plats.add(b.platform);map[k].bookings.push(b)});
     const cu = map[key];
     if (!cu) return;
     const cmemo = store.customerMemos[key] || { name:cu.guest, contact:cu.contact, nat:cu.nat, memo:'' };
-    openModal(`👤 ${cu.guest}님 정보`, `<form id="custForm" class="space-y-4"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-3xl font-black">${cu.guest}</p><div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20"><div><p class="text-[10px] opacity-70 uppercase">예약</p><p class="text-2xl font-black">${cu.n}회</p></div><div><p class="text-[10px] opacity-70 uppercase">총매출</p><p class="text-xl font-black">${fmt(cu.t)}</p></div><div><p class="text-[10px] opacity-70 uppercase">평균</p><p class="text-xl font-black">${fmt(Math.round(cu.t/cu.n))}</p></div></div></div><div class="grid grid-cols-2 gap-3"><input name="name" value="${cmemo.name||cu.guest}" placeholder="이름" class="p-3 border rounded-xl font-bold"><input name="contact" value="${cmemo.contact||cu.contact}" placeholder="연락처" class="p-3 border rounded-xl font-bold"></div><input name="nat" value="${cmemo.nat||cu.nat||''}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold"><textarea name="memo" placeholder="📝 고객 메모 (VIP/알러지/선호 등)" class="w-full p-3 border-2 border-amber-200 rounded-xl font-bold h-32 bg-amber-50">${cmemo.memo||''}</textarea><div class="bg-slate-50 p-4 rounded-xl"><p class="text-[10px] font-black text-slate-500 uppercase mb-3">📅 예약 이력 (${cu.bookings.length}건)</p><div class="space-y-2 max-h-40 overflow-y-auto scrollbar">${cu.bookings.sort((a,b)=>(b.checkIn||'').localeCompare(a.checkIn||'')).map(b=>{const p=store.prop(b.propId);const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="bg-white p-2 rounded-lg flex justify-between text-xs"><div><b>${p?.name||'-'}</b> · <span style="color:${pl?.color||'#666'}">${b.platform}</span></div><div><span class="text-slate-500">${b.checkIn}~${b.checkOut}</span> <b class="text-blue-600">${fmt(b.price)}</b></div></div>`}).join('')}</div></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 저장</button></form>`, 'max-w-3xl');
+    openModal(`👤 ${cu.guest}님 정보`, `<form id="custForm" class="space-y-4"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-3xl font-black">${cu.guest}</p><div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20"><div><p class="text-[10px] opacity-70 uppercase">예약</p><p class="text-2xl font-black">${cu.n}회</p></div><div><p class="text-[10px] opacity-70 uppercase">총매출</p><p class="text-xl font-black">${fmt(cu.t)}</p></div><div><p class="text-[10px] opacity-70 uppercase">평균</p><p class="text-xl font-black">${fmt(Math.round(cu.t/cu.n))}</p></div></div></div><div class="grid grid-cols-2 gap-3"><input name="name" value="${cmemo.name||cu.guest}" placeholder="이름" class="p-3 border rounded-xl font-bold"><input name="contact" value="${cmemo.contact||cu.contact}" placeholder="연락처" class="p-3 border rounded-xl font-bold"></div><input name="nat" value="${cmemo.nat||cu.nat||''}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold"><textarea name="memo" placeholder="📝 고객 메모 (VIP/알러지/선호 등)" class="w-full p-3 border-2 border-amber-200 rounded-xl font-bold h-32 bg-amber-50">${cmemo.memo||''}</textarea><div class="bg-slate-50 p-4 rounded-xl"><p class="text-[10px] font-black text-slate-500 uppercase mb-3">📅 예약 이력 (${cu.bookings.length}건)</p><div class="space-y-2 max-h-40 overflow-y-auto scrollbar">${cu.bookings.sort((a,b)=>(b.checkIn||'').localeCompare(a.checkIn||'')).map(b=>{const p=store.prop(b.propId);const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="bg-white p-2 rounded-lg flex justify-between text-xs"><div><b>${p?.name||'-'}</b> · <span style="color:${pl?.color||'#666'}">${b.platform}</span></div><div><span class="text-slate-500">${b.checkIn}~${b.checkOut}</span> <b class="text-blue-600">${fmt(bkRev(b))}</b></div></div>`}).join('')}</div></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 저장</button></form>`, 'max-w-3xl');
     document.getElementById('custForm').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -2134,7 +2485,7 @@ class Router {
   }
   
   showPlatformMgr() {
-    openModal('🎯 플랫폼 관리', `<div class="space-y-2 mb-4">${store.platforms.map((p,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl"><span class="w-8 h-8 rounded-lg" style="background:${p.color}"></span><input value="${p.name}" data-pn="${i}" class="flex-1 p-2 border rounded-lg font-bold"><input type="color" value="${p.color}" data-pc="${i}" class="w-12 h-10 border rounded-lg cursor-pointer"><button onclick="router.savePlatform(${i})" class="text-blue-500"><i data-lucide="check" class="w-4 h-4"></i></button><button onclick="router.delPlatform(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')}</div><form id="platForm" class="bg-blue-50 p-4 rounded-xl"><p class="text-xs font-black text-blue-600 uppercase mb-3">+ 신규 플랫폼</p><div class="flex gap-2"><input name="name" placeholder="플랫폼명" class="flex-1 p-3 border rounded-xl font-bold" required><input type="color" name="color" value="#2563eb" class="w-16 h-12 border rounded-xl cursor-pointer"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`);
+    openModal('🎯 플랫폼 관리 (드래그로 순서 변경)', `<div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700">💡 ⋮⋮ 아이콘을 드래그해 순서를 바꾸면 예약하기 화면의 플랫폼 순서에 반영됩니다.</div><div id="platList" class="space-y-2 mb-4">${store.platforms.map((p,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl" data-plat="${i}"><i data-lucide="grip-vertical" class="drag-handle w-4 h-4 text-slate-400 cursor-move"></i><span class="w-8 h-8 rounded-lg flex-shrink-0" style="background:${p.color}"></span><input value="${p.name}" data-pn="${i}" class="flex-1 p-2 border rounded-lg font-bold"><input type="color" value="${p.color}" data-pc="${i}" class="w-12 h-10 border rounded-lg cursor-pointer"><button onclick="router.savePlatform(${i})" class="text-blue-500"><i data-lucide="check" class="w-4 h-4"></i></button><button onclick="router.delPlatform(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')}</div><form id="platForm" class="bg-blue-50 p-4 rounded-xl"><p class="text-xs font-black text-blue-600 uppercase mb-3">+ 신규 플랫폼</p><div class="flex gap-2"><input name="name" placeholder="플랫폼명" class="flex-1 p-3 border rounded-xl font-bold" required><input type="color" name="color" value="#2563eb" class="w-16 h-12 border rounded-xl cursor-pointer"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`);
     document.getElementById('platForm').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -2145,6 +2496,23 @@ class Router {
       await this.renderAdminTab();
       toast('추가됨','success');
     };
+    setTimeout(() => {
+      const list = document.getElementById('platList');
+      if (list && typeof Sortable !== 'undefined') {
+        Sortable.create(list, {
+          handle: '.drag-handle',
+          animation: 150,
+          onEnd: async () => {
+            const order = [...list.querySelectorAll('[data-plat]')].map(el => +el.dataset.plat);
+            store.platforms = order.map(idx => store.platforms[idx]);
+            await API.setAll('platforms', store.platforms);
+            this.showPlatformMgr();
+            await this.renderAdminTab();
+            toast('플랫폼 순서 변경됨', 'success');
+          }
+        });
+      }
+    }, 100);
     lucide.createIcons();
   }
   async savePlatform(i) {
@@ -2180,7 +2548,7 @@ class Router {
     c.innerHTML = `<div class="flex justify-between items-center mb-6"><div><h2 class="text-3xl font-black">✨ AI 인사이트</h2><p class="text-slate-500 mt-1">데이터 분석 기반 자동 운영 개선 추천 (${insights.length}건)</p></div><button onclick="router.renderAdminTab()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm"><i data-lucide="refresh-cw" class="w-4 h-4 inline"></i> 다시 분석</button></div>
     <div class="grid grid-cols-3 gap-4 mb-6 mobile-stack"><div class="bg-red-50 border-2 border-red-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-red-600 uppercase">⚠️ 경고</p><p class="text-3xl font-black text-red-700 mt-2">${grouped.warning.length}건</p></div><div class="bg-blue-50 border-2 border-blue-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-blue-600 uppercase">ℹ️ 알림</p><p class="text-3xl font-black text-blue-700 mt-2">${grouped.info.length}건</p></div><div class="bg-green-50 border-2 border-green-200 p-5 rounded-2xl"><p class="text-[10px] font-black text-green-600 uppercase">✅ 추천</p><p class="text-3xl font-black text-green-700 mt-2">${grouped.success.length}건</p></div></div>
     <div class="space-y-3">${insights.map((i,idx)=>{const colors={warning:'bg-red-50 border-red-200',info:'bg-blue-50 border-blue-200',success:'bg-green-50 border-green-200'};return `<div class="${colors[i.level]} border-2 rounded-2xl p-5 flex items-start gap-4"><div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center flex-shrink-0"><i data-lucide="${i.icon||'info'}" class="w-6 h-6"></i></div><div class="flex-1 min-w-0"><h3 class="font-black text-lg">${i.title}</h3><p class="text-sm text-slate-700 mt-1 font-medium">${i.desc}</p></div>${i.action?`<button onclick="router.actOnInsight('${i.action}',${i.propId||'null'})" class="bg-slate-900 text-white px-4 py-2 rounded-xl font-black text-xs flex-shrink-0">조치 →</button>`:''}</div>`}).join('')}</div>
-    <div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-6 rounded-2xl mt-6"><h3 class="font-black text-lg mb-3">💡 AI 운영 팁</h3><div class="grid grid-cols-2 gap-3 text-sm mobile-stack"><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">📈 평균 가동률</p><p class="text-2xl font-black">${store.properties.length?Math.round(store.properties.filter(p=>getBookingForDate(p.id,todayStr())).length/store.properties.length*100):0}%</p></div><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">💰 평균 객단가</p><p class="text-2xl font-black">${fmt(store.bookings.length?Math.round(store.bookings.reduce((s,b)=>s+(+b.price||0),0)/store.bookings.length):0)}</p></div></div></div>`;
+    <div class="bg-gradient-to-br from-purple-600 to-pink-600 text-white p-6 rounded-2xl mt-6"><h3 class="font-black text-lg mb-3">💡 AI 운영 팁</h3><div class="grid grid-cols-2 gap-3 text-sm mobile-stack"><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">📈 평균 가동률</p><p class="text-2xl font-black">${store.properties.length?Math.round(store.properties.filter(p=>getBookingForDate(p.id,todayStr())).length/store.properties.length*100):0}%</p></div><div class="bg-white/10 p-3 rounded-xl"><p class="font-black mb-1">💰 평균 객단가</p><p class="text-2xl font-black">${fmt(store.bookings.length?Math.round(store.bookings.reduce((s,b)=>s+bkRev(b),0)/store.bookings.length):0)}</p></div></div></div>`;
     lucide.createIcons();
   }
   
@@ -2265,7 +2633,7 @@ class Router {
     const propStats = propsForStats.map(p => {
       const bks = filteredBookings.filter(b => b.propId === p.id);
       const exps = filteredExpenses.filter(e => e.propId === p.id);
-      const r = bks.reduce((s,b) => s + (+b.price||0), 0);
+      const r = bks.reduce((s,b) => s + bkRev(b), 0);
       const cAll = exps.reduce((s,e) => s + (+e.amount||0), 0);
       const cInit = exps.filter(e => e.majorCat === '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
       const cv = showAll ? cAll : (cAll - cInit);
@@ -2278,7 +2646,8 @@ class Router {
     
     c.innerHTML = `<div class="flex justify-between items-center mb-6 flex-wrap gap-3">
       <h2 class="text-3xl font-black">📊 통계 & 보고서</h2>
-      <div class="flex gap-2 flex-wrap">
+      <div class="flex gap-2 flex-wrap items-center">
+        ${revenueBasisToggle()}
         <button onclick="router.exportStatsExcel()" class="bg-green-600 text-white px-4 py-3 rounded-xl font-black text-sm">📥 엑셀↓</button>
         <label class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm cursor-pointer">📤 엑셀↑<input type="file" id="statsImportInput" accept=".xlsx,.xls" class="hidden"></label>
         <button onclick="router.genReport()" class="bg-amber-500 text-white px-4 py-3 rounded-xl font-black text-sm">📝 AI 보고서</button>
@@ -2517,7 +2886,7 @@ class Router {
     const profitSheet = propsForStats.map((p, i) => {
       const bks = filteredBookings.filter(b => b.propId === p.id);
       const exps = filteredExpenses.filter(e => e.propId === p.id);
-      const rev = bks.reduce((s,b) => s + (+b.price||0), 0);
+      const rev = bks.reduce((s,b) => s + bkRev(b), 0);
       const cAll = exps.reduce((s,e) => s + (+e.amount||0), 0);
       const cInit = exps.filter(e => e.majorCat === '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
       const cost = showAll ? cAll : (cAll - cInit);
@@ -2542,7 +2911,15 @@ class Router {
       '연락처': b.contact,
       '플랫폼': b.platform,
       '인원': b.people,
-      '가격': b.price,
+      '임대료': bookingAmounts(b).rent,
+      '관리비(전체)': bookingAmounts(b).mgmt,
+      '청소비': bookingAmounts(b).clean,
+      '플랫폼 매출액': bookingAmounts(b).platform,
+      '실 입금 금액': bookingAmounts(b).net,
+      '이불': bookingAmounts(b).bedding,
+      '주차': bookingAmounts(b).parking,
+      '추가숙박/기타': bookingAmounts(b).extra,
+      '총 매출액': bookingAmounts(b).total,
       '메모': b.memo || ''
     }));
     
@@ -2645,7 +3022,7 @@ class Router {
       const o = ops[p.id]||{};
       const myBks = store.bookings.filter(b=>b.propId===p.id);
       const myExp = store.expenses.filter(e=>e.propId===p.id&&e.majorCat!=='초기투자지출').reduce((s,e)=>s+(+e.amount||0),0);
-      const r = myBks.reduce((s,b)=>s+(+b.price||0),0);
+      const r = myBks.reduce((s,b)=>s+bkRev(b),0);
       const profitRate = r?(r-myExp)/r*100:0;
       if (profitRate < 30 && r > 0) aiRecs.push({prop:p,msg:`수익률 ${Math.round(profitRate)}% - 가격 인상 또는 비용 절감 필요`});
       if (myBks.length === 0) aiRecs.push({prop:p,msg:'예약 0건 - 마케팅 강화 필요'});
@@ -2680,11 +3057,11 @@ class Router {
   // ===== 고객 관리 =====
   admCustomers(c) {
     const map = {};
-    store.bookings.forEach(b=>{const k=(b.guest||'')+'|'+(b.contact||'');if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),last:'',bookings:[]};map[k].n++;map[k].t+=(+b.price||0);map[k].plats.add(b.platform);if(b.checkIn>map[k].last)map[k].last=b.checkIn;map[k].bookings.push(b)});
+    store.bookings.forEach(b=>{const k=(b.guest||'')+'|'+(b.contact||'');if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),last:'',bookings:[]};map[k].n++;map[k].t+=bkRev(b);map[k].plats.add(b.platform);if(b.checkIn>map[k].last)map[k].last=b.checkIn;map[k].bookings.push(b)});
     const list = Object.values(map).sort((a,b)=>(b.last||'').localeCompare(a.last||''));
     const platStats = {};
     store.platforms.forEach(p=>platStats[p.name]={count:0,revenue:0,color:p.color});
-    store.bookings.forEach(b=>{if(platStats[b.platform]){platStats[b.platform].count++;platStats[b.platform].revenue+=(+b.price||0)}});
+    store.bookings.forEach(b=>{if(platStats[b.platform]){platStats[b.platform].count++;platStats[b.platform].revenue+=bkRev(b)}});
     const totalRev = Object.values(platStats).reduce((s,p)=>s+p.revenue,0);
     c.innerHTML = `<div class="flex justify-between items-center mb-6"><div><h2 class="text-3xl font-black">👥 고객 관리</h2><p class="text-slate-500 mt-1">최근순 정렬 · 클릭하여 메모 작성</p></div><button onclick="router.showPlatformMgr()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">🎯 플랫폼 관리</button></div>
     <div class="grid grid-cols-4 gap-4 mb-6 mobile-stack"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">고객수</p><p class="text-2xl font-black mt-2">${list.length}명</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">재방문</p><p class="text-2xl font-black text-blue-600 mt-2">${list.filter(x=>x.n>1).length}명</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">평균객단가</p><p class="text-2xl font-black mt-2">${fmt(list.length?Math.round(list.reduce((s,x)=>s+x.t,0)/list.length):0)}</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">외국인</p><p class="text-2xl font-black mt-2">${list.filter(x=>x.nat&&x.nat!=='한국').length}명</p></div></div>
@@ -2702,11 +3079,11 @@ class Router {
 
   showCustomerDetail(key) {
     const map = {};
-    store.bookings.forEach(b=>{const k=(b.guest||'')+'|'+(b.contact||'');if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),bookings:[]};map[k].n++;map[k].t+=(+b.price||0);map[k].plats.add(b.platform);map[k].bookings.push(b)});
+    store.bookings.forEach(b=>{const k=(b.guest||'')+'|'+(b.contact||'');if(!map[k])map[k]={key:k,guest:b.guest,contact:b.contact,nat:b.nationality,n:0,t:0,plats:new Set(),bookings:[]};map[k].n++;map[k].t+=bkRev(b);map[k].plats.add(b.platform);map[k].bookings.push(b)});
     const cu = map[key];
     if (!cu) return;
     const cmemo = store.customerMemos[key] || { name:cu.guest, contact:cu.contact, nat:cu.nat, memo:'' };
-    openModal(`👤 ${cu.guest}님 정보`, `<form id="custForm" class="space-y-4"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-3xl font-black">${cu.guest}</p><div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20"><div><p class="text-[10px] opacity-70 uppercase">예약</p><p class="text-2xl font-black">${cu.n}회</p></div><div><p class="text-[10px] opacity-70 uppercase">총매출</p><p class="text-xl font-black">${fmt(cu.t)}</p></div><div><p class="text-[10px] opacity-70 uppercase">평균</p><p class="text-xl font-black">${fmt(Math.round(cu.t/cu.n))}</p></div></div></div><div class="grid grid-cols-2 gap-3"><input name="name" value="${cmemo.name||cu.guest}" placeholder="이름" class="p-3 border rounded-xl font-bold"><input name="contact" value="${cmemo.contact||cu.contact}" placeholder="연락처" class="p-3 border rounded-xl font-bold"></div><input name="nat" value="${cmemo.nat||cu.nat||''}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold"><textarea name="memo" placeholder="📝 고객 메모 (VIP/알러지/선호 등)" class="w-full p-3 border-2 border-amber-200 rounded-xl font-bold h-32 bg-amber-50">${cmemo.memo||''}</textarea><div class="bg-slate-50 p-4 rounded-xl"><p class="text-[10px] font-black text-slate-500 uppercase mb-3">📅 예약 이력 (${cu.bookings.length}건)</p><div class="space-y-2 max-h-40 overflow-y-auto scrollbar">${cu.bookings.sort((a,b)=>(b.checkIn||'').localeCompare(a.checkIn||'')).map(b=>{const p=store.prop(b.propId);const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="bg-white p-2 rounded-lg flex justify-between text-xs"><div><b>${p?.name||'-'}</b> · <span style="color:${pl?.color||'#666'}">${b.platform}</span></div><div><span class="text-slate-500">${b.checkIn}~${b.checkOut}</span> <b class="text-blue-600">${fmt(b.price)}</b></div></div>`}).join('')}</div></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 저장</button></form>`, 'max-w-3xl');
+    openModal(`👤 ${cu.guest}님 정보`, `<form id="custForm" class="space-y-4"><div class="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl"><p class="text-3xl font-black">${cu.guest}</p><div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20"><div><p class="text-[10px] opacity-70 uppercase">예약</p><p class="text-2xl font-black">${cu.n}회</p></div><div><p class="text-[10px] opacity-70 uppercase">총매출</p><p class="text-xl font-black">${fmt(cu.t)}</p></div><div><p class="text-[10px] opacity-70 uppercase">평균</p><p class="text-xl font-black">${fmt(Math.round(cu.t/cu.n))}</p></div></div></div><div class="grid grid-cols-2 gap-3"><input name="name" value="${cmemo.name||cu.guest}" placeholder="이름" class="p-3 border rounded-xl font-bold"><input name="contact" value="${cmemo.contact||cu.contact}" placeholder="연락처" class="p-3 border rounded-xl font-bold"></div><input name="nat" value="${cmemo.nat||cu.nat||''}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold"><textarea name="memo" placeholder="📝 고객 메모 (VIP/알러지/선호 등)" class="w-full p-3 border-2 border-amber-200 rounded-xl font-bold h-32 bg-amber-50">${cmemo.memo||''}</textarea><div class="bg-slate-50 p-4 rounded-xl"><p class="text-[10px] font-black text-slate-500 uppercase mb-3">📅 예약 이력 (${cu.bookings.length}건)</p><div class="space-y-2 max-h-40 overflow-y-auto scrollbar">${cu.bookings.sort((a,b)=>(b.checkIn||'').localeCompare(a.checkIn||'')).map(b=>{const p=store.prop(b.propId);const pl=store.platforms.find(x=>x.name===b.platform);return `<div class="bg-white p-2 rounded-lg flex justify-between text-xs"><div><b>${p?.name||'-'}</b> · <span style="color:${pl?.color||'#666'}">${b.platform}</span></div><div><span class="text-slate-500">${b.checkIn}~${b.checkOut}</span> <b class="text-blue-600">${fmt(bkRev(b))}</b></div></div>`}).join('')}</div></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">💾 저장</button></form>`, 'max-w-3xl');
     document.getElementById('custForm').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -2716,7 +3093,7 @@ class Router {
   }
   
   showPlatformMgr() {
-    openModal('🎯 플랫폼 관리', `<div class="space-y-2 mb-4">${store.platforms.map((p,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl"><span class="w-8 h-8 rounded-lg" style="background:${p.color}"></span><input value="${p.name}" data-pn="${i}" class="flex-1 p-2 border rounded-lg font-bold"><input type="color" value="${p.color}" data-pc="${i}" class="w-12 h-10 border rounded-lg cursor-pointer"><button onclick="router.savePlatform(${i})" class="text-blue-500"><i data-lucide="check" class="w-4 h-4"></i></button><button onclick="router.delPlatform(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')}</div><form id="platForm" class="bg-blue-50 p-4 rounded-xl"><p class="text-xs font-black text-blue-600 uppercase mb-3">+ 신규 플랫폼</p><div class="flex gap-2"><input name="name" placeholder="플랫폼명" class="flex-1 p-3 border rounded-xl font-bold" required><input type="color" name="color" value="#2563eb" class="w-16 h-12 border rounded-xl cursor-pointer"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`);
+    openModal('🎯 플랫폼 관리 (드래그로 순서 변경)', `<div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700">💡 ⋮⋮ 아이콘을 드래그해 순서를 바꾸면 예약하기 화면의 플랫폼 순서에 반영됩니다.</div><div id="platList" class="space-y-2 mb-4">${store.platforms.map((p,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-3 rounded-xl" data-plat="${i}"><i data-lucide="grip-vertical" class="drag-handle w-4 h-4 text-slate-400 cursor-move"></i><span class="w-8 h-8 rounded-lg flex-shrink-0" style="background:${p.color}"></span><input value="${p.name}" data-pn="${i}" class="flex-1 p-2 border rounded-lg font-bold"><input type="color" value="${p.color}" data-pc="${i}" class="w-12 h-10 border rounded-lg cursor-pointer"><button onclick="router.savePlatform(${i})" class="text-blue-500"><i data-lucide="check" class="w-4 h-4"></i></button><button onclick="router.delPlatform(${i})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('')}</div><form id="platForm" class="bg-blue-50 p-4 rounded-xl"><p class="text-xs font-black text-blue-600 uppercase mb-3">+ 신규 플랫폼</p><div class="flex gap-2"><input name="name" placeholder="플랫폼명" class="flex-1 p-3 border rounded-xl font-bold" required><input type="color" name="color" value="#2563eb" class="w-16 h-12 border rounded-xl cursor-pointer"><button class="bg-blue-600 text-white px-5 rounded-xl font-black">추가</button></div></form>`);
     document.getElementById('platForm').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -2727,6 +3104,23 @@ class Router {
       await this.renderAdminTab();
       toast('추가됨','success');
     };
+    setTimeout(() => {
+      const list = document.getElementById('platList');
+      if (list && typeof Sortable !== 'undefined') {
+        Sortable.create(list, {
+          handle: '.drag-handle',
+          animation: 150,
+          onEnd: async () => {
+            const order = [...list.querySelectorAll('[data-plat]')].map(el => +el.dataset.plat);
+            store.platforms = order.map(idx => store.platforms[idx]);
+            await API.setAll('platforms', store.platforms);
+            this.showPlatformMgr();
+            await this.renderAdminTab();
+            toast('플랫폼 순서 변경됨', 'success');
+          }
+        });
+      }
+    }, 100);
     lucide.createIcons();
   }
   async savePlatform(i) {
@@ -2752,7 +3146,7 @@ class Router {
     const year = cur.getFullYear();
     const month = cur.getMonth();
     const allSched = (store.schedule || []).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    const monthSched = allSched.filter(s => (s.date || '').startsWith(`${year}-${String(month + 1).padStart(2, '0')}`));
+    const monthSched = allSched.filter(s => toDateStr(s.date).startsWith(`${year}-${String(month + 1).padStart(2, '0')}`));
     const staffMode = this.staffMode || 'cal';
     const nonAdminUsers = (store.users || []).filter(u => u.role !== 'Admin');
     
@@ -3087,14 +3481,14 @@ class Router {
     filteredBookings.forEach(b => {
       const k = (b.guest||'') + '|' + (b.contact||'');
       if (!ltvMap[k]) ltvMap[k] = { name: b.guest, total: 0, count: 0 };
-      ltvMap[k].total += +b.price || 0;
+      ltvMap[k].total += bkRev(b);
       ltvMap[k].count++;
     });
     const topLTV = Object.values(ltvMap).sort((a,b) => b.total - a.total).slice(0, 10);
 
     // ROI (필터 적용)
     const roiList = targetProps.map(p => {
-      const rev = filteredBookings.filter(b => b.propId === p.id).reduce((s,b) => s + (+b.price||0), 0);
+      const rev = filteredBookings.filter(b => b.propId === p.id).reduce((s,b) => s + bkRev(b), 0);
       const init = filteredExpenses.filter(e => e.propId === p.id && e.majorCat === '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
       const op = filteredExpenses.filter(e => e.propId === p.id && e.majorCat !== '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
       const profit = rev - op;
@@ -3109,7 +3503,7 @@ class Router {
       if (!b.checkIn) return;
       const y = b.checkIn.slice(0,4);
       if (!yearStats[y]) yearStats[y] = { rev:0, count:0 };
-      yearStats[y].rev += +b.price || 0;
+      yearStats[y].rev += bkRev(b);
       yearStats[y].count++;
     });
 
@@ -3121,7 +3515,8 @@ class Router {
         <h2 class="text-3xl font-black">📈 고급 분석</h2>
         <p class="text-slate-500 mt-1">${periodLabel} · ${scopeLabel} · 매물 ${targetProps.length}개</p>
       </div>
-      <div class="flex gap-2 flex-wrap">
+      <div class="flex gap-2 flex-wrap items-center">
+        ${revenueBasisToggle()}
         <button onclick="router.exportAnalyticsExcel()" class="bg-green-600 text-white px-4 py-3 rounded-xl font-black text-sm">📥 엑셀↓</button>
         <label class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm cursor-pointer">📤 엑셀↑<input type="file" id="anaImportInput" accept=".xlsx,.xls" class="hidden"></label>
       </div>
@@ -3290,7 +3685,7 @@ class Router {
       e.propId === propId && e.date && e.date >= f.from && e.date <= f.to
     ).sort((a,b) => (b.date||'').localeCompare(a.date||''));
 
-    const rev = bookings.reduce((s,b) => s + (+b.price||0), 0);
+    const rev = bookings.reduce((s,b) => s + bkRev(b), 0);
     const init = expenses.filter(e => e.majorCat === '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
     const op = expenses.filter(e => e.majorCat !== '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
     const profit = rev - op;
@@ -3319,7 +3714,7 @@ class Router {
       <div class="bg-white border rounded-2xl overflow-hidden mb-4">
         <div class="p-4 bg-blue-50 border-b"><p class="text-[10px] font-black text-blue-700 uppercase">📅 예약 이력 (${bookings.length}건)</p></div>
         <div class="overflow-x-auto max-h-64 overflow-y-auto scrollbar">
-          ${bookings.length ? `<table class="w-full text-xs"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase sticky top-0"><tr><th class="px-3 py-2 text-left">기간</th><th class="px-3 py-2 text-left">예약자</th><th class="px-3 py-2 text-left">플랫폼</th><th class="px-3 py-2 text-right">금액</th></tr></thead><tbody class="divide-y">${bookings.map(b => `<tr class="hover:bg-blue-50/30"><td class="px-3 py-2 font-mono">${b.checkIn} ~ ${b.checkOut}</td><td class="px-3 py-2 font-black">${b.guest}</td><td class="px-3 py-2">${b.platform}</td><td class="px-3 py-2 text-right font-black text-blue-600">${fmt(b.price)}</td></tr>`).join('')}</tbody></table>` : '<p class="p-6 text-center text-slate-400 font-bold">예약 없음</p>'}
+          ${bookings.length ? `<table class="w-full text-xs"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase sticky top-0"><tr><th class="px-3 py-2 text-left">기간</th><th class="px-3 py-2 text-left">예약자</th><th class="px-3 py-2 text-left">플랫폼</th><th class="px-3 py-2 text-right">금액</th></tr></thead><tbody class="divide-y">${bookings.map(b => `<tr class="hover:bg-blue-50/30"><td class="px-3 py-2 font-mono">${b.checkIn} ~ ${b.checkOut}</td><td class="px-3 py-2 font-black">${b.guest}</td><td class="px-3 py-2">${b.platform}</td><td class="px-3 py-2 text-right font-black text-blue-600">${fmt(bkRev(b))}</td></tr>`).join('')}</tbody></table>` : '<p class="p-6 text-center text-slate-400 font-bold">예약 없음</p>'}
         </div>
       </div>
 
@@ -3345,7 +3740,7 @@ class Router {
 
     // 시트 1: 매물별 ROI
     const roiSheet = targetProps.map((p, i) => {
-      const rev = filteredBookings.filter(b => b.propId === p.id).reduce((s,b) => s + (+b.price||0), 0);
+      const rev = filteredBookings.filter(b => b.propId === p.id).reduce((s,b) => s + bkRev(b), 0);
       const init = filteredExpenses.filter(e => e.propId === p.id && e.majorCat === '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
       const op = filteredExpenses.filter(e => e.propId === p.id && e.majorCat !== '초기투자지출').reduce((s,e) => s + (+e.amount||0), 0);
       const profit = rev - op;
@@ -3368,7 +3763,7 @@ class Router {
     filteredBookings.forEach(b => {
       const k = (b.guest||'') + '|' + (b.contact||'');
       if (!ltvMap[k]) ltvMap[k] = { name: b.guest, contact: b.contact, total: 0, count: 0 };
-      ltvMap[k].total += +b.price || 0;
+      ltvMap[k].total += bkRev(b);
       ltvMap[k].count++;
     });
     const ltvSheet = Object.values(ltvMap).sort((a,b) => b.total - a.total).map((c, i) => ({
@@ -3394,7 +3789,7 @@ class Router {
       if (!b.checkIn) return;
       const y = b.checkIn.slice(0,4);
       if (!yearStats[y]) yearStats[y] = { rev:0, count:0 };
-      yearStats[y].rev += +b.price || 0;
+      yearStats[y].rev += bkRev(b);
       yearStats[y].count++;
     });
     const yearSheet = Object.entries(yearStats).sort((a,b) => a[0].localeCompare(b[0])).map(([y,s]) => ({
@@ -3587,7 +3982,7 @@ class Router {
         title: '🎉 초기 PMS 시스템 출시',
         author: 'QJ-PMS Team',
         features: [
-          '🔐 로그인 시스템 (Admin/Manager/Director)',
+          '🔐 로그인 시스템 (Admin/Manager/Staff)',
           '🏠 매물 관리 (CRUD + 그룹화)',
           '📅 예약 관리 + 캘린더',
           '💬 매물별 채팅 시스템',
@@ -3801,7 +4196,7 @@ class Router {
         <button onclick="router.showUserForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 신규 계정</button>
       </div>
       <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700">
-        💡 Admin: 모든 권한 · Manager: 배정 매물만 · Director: 모든 매물 조회 (수정 불가)
+        💡 Admin: 모든 권한 · Manager: 배정 매물만 · Staff: 모든 매물 조회 (수정 불가)
       </div>
       <div class="bg-white rounded-2xl border overflow-x-auto">
         <table class="w-full">
@@ -3822,11 +4217,11 @@ class Router {
             ${store.users.map(u => {
               const roleColor = u.role === 'Admin' ? 'bg-amber-100 text-amber-700' : u.role === 'Manager' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600';
               const nick = (u.name.match(/\((.+)\)/) || [, u.name])[1];
-              const permText = u.role === 'Admin' ? '전체' : u.role === 'Director' ? '뷰(전체)' : `${(u.permissions || []).length}개`;
+              const permText = u.role === 'Admin' ? '전체' : isStaffRole(u.role) ? '뷰(전체)' : `${(u.permissions || []).length}개`;
               return `<tr class="hover:bg-blue-50/30">
                 <td class="px-4 py-3 font-mono font-black">${u.id}</td>
                 <td class="px-4 py-3 font-black">${u.name}</td>
-                <td class="px-4 py-3"><span class="px-2 py-1 rounded text-[10px] font-black ${roleColor}">${u.role}</span></td>
+                <td class="px-4 py-3"><span class="px-2 py-1 rounded text-[10px] font-black ${roleColor}">${roleLabel(u.role)}</span></td>
                 <td class="px-4 py-3"><span class="tag-mgr" style="background:${u.tagColor || '#94a3b8'}">${nick}</span></td>
                 <td class="px-4 py-3 text-xs">${u.contact || '-'}</td>
                 <td class="px-4 py-3 text-xs">${u.email || '-'}</td>
@@ -3870,7 +4265,7 @@ class Router {
             <select name="role" class="w-full p-3 border rounded-xl font-bold mt-1">
               <option value="Admin" ${u.role === 'Admin' ? 'selected' : ''}>Admin</option>
               <option value="Manager" ${u.role === 'Manager' ? 'selected' : ''}>Manager</option>
-              <option value="Director" ${u.role === 'Director' ? 'selected' : ''}>Director</option>
+              <option value="Staff" ${(u.role === 'Staff' || u.role === 'Director') ? 'selected' : ''}>Staff</option>
             </select>
           </div>
         </div>
@@ -4464,7 +4859,7 @@ class Router {
   // 표시 필드 정의
   _getDisplayFields(type) {
     return {
-      properties: [{key:'name',label:'숙소명'},{key:'group',label:'그룹'},{key:'location',label:'위치'},{key:'price',label:'가격'},{key:'cost',label:'원가'}],
+      properties: [{key:'name',label:'숙소명'},{key:'group',label:'지역 그룹'},{key:'location',label:'위치'},{key:'price',label:'판매가(1박)'},{key:'priceWeek',label:'판매가(주당)'}],
       bookings: [{key:'propName',label:'숙소'},{key:'guest',label:'예약자'},{key:'checkIn',label:'체크인'},{key:'checkOut',label:'체크아웃'},{key:'price',label:'가격'},{key:'platform',label:'플랫폼'}],
       expenses: [{key:'propName',label:'숙소'},{key:'date',label:'날짜'},{key:'category',label:'분류'},{key:'amount',label:'금액'},{key:'memo',label:'메모'}]
     }[type] || [];
@@ -4954,11 +5349,13 @@ class Router {
     const fieldDefs = {
       properties: [
         { key:'name', label:'숙소명', required:true, type:'text' },
-        { key:'group', label:'그룹', type:'select', options:store.groups },
+        { key:'group', label:'지역 그룹', type:'select', options:store.groups },
         { key:'location', label:'위치', type:'text' },
-        { key:'address', label:'주소', type:'text' },
-        { key:'price', label:'1박 가격', required:true, type:'number' },
-        { key:'cost', label:'원가', type:'number' },
+        { key:'address', label:'상세위치', type:'text' },
+        { key:'price', label:'판매가(1박)', required:true, type:'number' },
+        { key:'priceWeek', label:'판매가(주당)', type:'number' },
+        { key:'mgmtFeeWeek', label:'관리비(주당)', type:'number' },
+        { key:'cleanFee', label:'청소비(1회)', type:'number' },
         { key:'manager', label:'담당자', type:'text' }
       ],
       bookings: [
@@ -5103,11 +5500,13 @@ class Router {
     const fieldDictionaries = {
       properties: {
         name: ['숙소명','숙소이름','매물명','이름','name','property','title'],
-        group: ['그룹','지역구분','region','group'],
+        group: ['그룹','지역그룹','지역구분','region','group'],
         location: ['위치','지역','동','location'],
-        address: ['주소','상세주소','address'],
-        price: ['1박가격','가격','판매가','price','1박','요금'],
-        cost: ['원가','매입가','cost'],
+        address: ['상세위치','주소','상세주소','address'],
+        price: ['판매가(1박)','1박가격','가격','판매가','price','1박','요금'],
+        priceWeek: ['판매가(주당)','주당가격','주간가격','주단위','priceweek','weeklyprice'],
+        mgmtFeeWeek: ['관리비(주당)','주당관리비','관리비','mgmtfee'],
+        cleanFee: ['청소비(1회)','청소비','cleanfee'],
         manager: ['담당자','매니저','manager']
       },
       bookings: {
@@ -5146,7 +5545,7 @@ class Router {
   // ===== [v3.2] 컬럼 매핑 UI 렌더링 =====
       _renderGSheetMapping() {
     const fieldLabels = {
-      properties: { name:'숙소명*', group:'그룹', location:'위치', address:'주소', price:'1박가격*', cost:'원가', manager:'담당자' },
+      properties: { name:'숙소명*', group:'지역 그룹', location:'위치', address:'상세위치', price:'판매가(1박)*', priceWeek:'판매가(주당)', mgmtFeeWeek:'관리비(주당)', cleanFee:'청소비(1회)', manager:'담당자' },
       bookings: { propName:'숙소명*', guest:'예약자*', contact:'연락처', checkIn:'체크인*', checkOut:'체크아웃*', price:'가격*', platform:'플랫폼', people:'인원', nationality:'국적' },
       expenses: { date:'날짜*', propName:'숙소*', majorCat:'대분류', category:'소분류*', amount:'금액*', memo:'메모' }
     };
@@ -5277,9 +5676,11 @@ class Router {
 
       try {
         if (type === 'properties') {
-          if (!item.name || !item.price) { errors.push(`${idx+2}행: 숙소명/가격 누락`); return; }
-          item.price = +item.price.replace(/[^0-9.]/g,'') || 0;
-          item.cost = +String(item.cost||0).replace(/[^0-9.]/g,'') || 0;
+          if (!item.name || (!item.price && !item.priceWeek)) { errors.push(`${idx+2}행: 숙소명/판매가 누락`); return; }
+          item.price = num(item.price);
+          ['priceWeek','mgmtFeeWeek','cleanFee'].forEach(k => { if (item[k]) item[k] = num(item[k]); else delete item[k]; });
+          // 판매가(주당)만 있고 1박이 비어 있으면 자동 계산 (주당 ÷ 6, 1,000원 단위)
+          if (!item.price && item.priceWeek) item.price = round1000(item.priceWeek / 6);
           item.id = Date.now() + idx;
           item.status = 'empty';
           item.images = [];
@@ -5524,7 +5925,7 @@ class Router {
     const allLogs = store.logs || [];
     const specials = allLogs.filter(l => l.special);
     const today = todayStr();
-    const todayLogs = allLogs.filter(l => l.time && l.time.startsWith(today));
+    const todayLogs = allLogs.filter(l => String(l.time || '').startsWith(today));
     
     c.innerHTML = `
       <div class="mb-6">

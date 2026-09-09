@@ -509,3 +509,27 @@ html.dark .scrollbar::-webkit-scrollbar-thumb { background: #475569; }
 .heat-3 { background: #2563eb; }
 .heat-4 { background: #1e40af; }
 .heat-5 { background: #1e3a8a; }
+/* ===== [v3.4] 달력 - 체크인/체크아웃 대각선 분할 ===== */
+.cal-cell { position: relative; }
+.cal-layer { position: absolute; inset: 0; z-index: 1; }
+.cal-layer:hover { filter: brightness(0.94); }
+/* 좌상단 삼각형 = 그날 퇴실 / 우하단 삼각형 = 그날 입실 */
+.cal-out { clip-path: polygon(0 0, 100% 0, 0 100%); }
+.cal-in  { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.cal-split {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(to bottom right, transparent calc(50% - 0.5px), #cbd5e1 calc(50% - 0.5px), #cbd5e1 calc(50% + 0.5px), transparent calc(50% + 0.5px));
+}
+.cal-content { position: relative; z-index: 3; pointer-events: none; height: 100%; display: flex; flex-direction: column; }
+.cal-tag { font-size: 8px; font-weight: 900; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-tag-out { text-align: left; }
+.cal-tag-in { text-align: right; margin-top: auto; }
+
+.cal-legend { width: 12px; height: 12px; border-radius: 3px; border: 1px solid #cbd5e1; display: inline-block; }
+.cal-legend-out { background: linear-gradient(to bottom right, #94a3b8 49.5%, transparent 50%); }
+.cal-legend-in  { background: linear-gradient(to bottom right, transparent 49.5%, #2563eb 50%); }
+.cal-legend-full { background: #2563eb33; border-color: #2563eb; }
+
+html.dark .cal-split {
+  background: linear-gradient(to bottom right, transparent calc(50% - 0.5px), #475569 calc(50% - 0.5px), #475569 calc(50% + 0.5px), transparent calc(50% + 0.5px));
+}
