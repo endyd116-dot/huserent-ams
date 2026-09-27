@@ -50,6 +50,7 @@ window.API = {
   async update(c, id, d) { return this.request(`/data?collection=${c}&id=${id}`, { method:'PUT', body: JSON.stringify(d) }); },
   async delete(c, id) { return this.request(`/data?collection=${c}&id=${id}`, { method:'DELETE' }); },
   async setAll(c, d) { return this.request(`/data?collection=${c}&bulk=1`, { method:'PUT', body: JSON.stringify({ data: d }) }); },
+  async deleteMany(c, ids) { return this.request(`/data?collection=${c}&bulk=1`, { method:'DELETE', body: JSON.stringify({ ids }) }); },
 
   // 🆕 [v3.3] AI 매핑 (단순)
   async aiMap(type, columns, sampleRows) {

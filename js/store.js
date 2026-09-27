@@ -13,6 +13,7 @@ class Store {
     this.internet = [];
     this.products = [];
     this.schedule = [];
+    this.recurring = [];   // [v3.5] 정기 지출(매월 자동이체) 규칙
     this.opsData = {};
     this.majorCats = ["초기투자지출","고정지출","변동지출"];
     this.subCats = {};
@@ -37,7 +38,7 @@ class Store {
     if (!this.currentUser) return;
     try {
       showLoading(true);
-      const cols = ['properties','bookings','expenses','chats','users','groups','platforms','internet','products','schedule','logs','profileRequests','majorCats','subCats','userNotifs','reportRecipients','opsData','customerMemos','siteConfig','securitySettings'];
+      const cols = ['properties','bookings','expenses','chats','users','groups','platforms','internet','products','schedule','recurring','logs','profileRequests','majorCats','subCats','userNotifs','reportRecipients','opsData','customerMemos','siteConfig','securitySettings'];
       const results = await Promise.all(cols.map(c => API.list(c).catch(()=>null)));
       cols.forEach((c,i) => {
         const v = results[i];
@@ -104,7 +105,15 @@ class Store {
       
       // 페이지 타이틀 적용
       if (this.siteConfig?.title) document.title = this.siteConfig.title;
-      
+
+      // 정기 지출: 자동이체일이 지난 달 중 아직 등록되지 않은 지출을 등록 (관리자 접속 시)
+      if (this.currentUser?.role === 'Admin') {
+        try {
+          const n = await this.runRecurring();
+          if (n) toast(`🔁 정기 지출 ${n}건이 자동 등록되었습니다`, 'success');
+        } catch (e) { console.warn('정기 지출 자동 등록 실패:', e); }
+      }
+
       this.loaded = true;
       console.log('✅ Data loaded');
     } catch(e) {
@@ -396,28 +405,88 @@ class Store {
     } else {
       d.id = Date.now();
       d.status = 'empty';
+      d.createdAt = nowTime();
       const created = await API.create('properties', d);
       this.properties.push(created);
       await this.addLog(`신규 숙소 [${d.name}] 등록`);
     }
   }
 
+  /* ===== [v3.5] 숙소 삭제 = 연결 데이터까지 함께 정리 =====
+     숙소만 지우면 예약·지출·스케줄이 어느 화면에도 안 보이는 고아 데이터로 남는다. */
+  propLinkedPlan(propIds) {
+    const ids = new Set((propIds || []).map(Number));
+    const has = x => ids.has(Number(x.propId));
+    const plan = {
+      properties: [...ids],
+      bookings: this.bookings.filter(has).map(x => x.id),
+      schedule: this.schedule.filter(has).map(x => x.id),
+      expenses: this.expenses.filter(has).map(x => x.id),
+      chats: this.chats.filter(has).map(x => x.id),
+      internet: this.internet.filter(has).map(x => x.id),
+      recurring: (this.recurring || []).filter(has).map(x => x.id),
+      opsKeys: [...ids].filter(pid => this.opsData && this.opsData[pid] !== undefined)
+    };
+    // 예약에 연결된 청소 스케줄은 숙소 번호가 달라도 함께 (예약이 사라지면 의미가 없다)
+    const bkSet = new Set(plan.bookings.map(String));
+    this.schedule.forEach(s => { if (s.bookingId != null && bkSet.has(String(s.bookingId)) && !plan.schedule.includes(s.id)) plan.schedule.push(s.id); });
+    return plan;
+  }
+
+  // 삭제 후 예약이 하나도 남지 않는 고객의 메모 키 (고객 목록은 예약에서 만들어지므로 메모만 남으면 안 보인다)
+  orphanMemoKeys(deletedBookingIds) {
+    const del = new Set((deletedBookingIds || []).map(String));
+    const remain = new Set(this.bookings.filter(b => !del.has(String(b.id))).map(b => (b.guest || '') + '|' + (b.contact || '')));
+    return Object.keys(this.customerMemos || {}).filter(k => !remain.has(k));
+  }
+
+  async purge(plan, logMsg, opts = {}) {
+    let total = 0;
+    // 예정된 스케줄이 취소되면 담당자에게 알린다 (테스트 데이터 일괄 정리 때는 opts.notify=false)
+    const today = todayStr();
+    const cancelled = opts.notify ? this.schedule.filter(s => (plan.schedule || []).includes(s.id) && (s.date || '') >= today) : [];
+    // 자식 데이터부터 지우고 숙소는 마지막에 → 중간에 실패해도 숙소가 남아 다시 시도할 수 있다
+    for (const col of ['bookings', 'schedule', 'expenses', 'chats', 'internet', 'recurring', 'properties']) {
+      const ids = [...new Set(plan[col] || [])];
+      if (!ids.length) continue;
+      await API.deleteMany(col, ids);
+      const set = new Set(ids.map(String));
+      this[col] = (this[col] || []).filter(x => !set.has(String(x.id)));
+      total += ids.length;
+    }
+    if (plan.opsKeys?.length) {
+      plan.opsKeys.forEach(k => { delete this.opsData[k]; });
+      await API.setAll('opsData', this.opsData);
+    }
+    if (plan.memoKeys?.length) {
+      plan.memoKeys.forEach(k => { delete this.customerMemos[k]; });
+      await API.setAll('customerMemos', this.customerMemos);
+    }
+    for (const s of cancelled) {
+      const u = this.userByName(s.staff);
+      if (u && u.id !== this.currentUser?.id) await this.notify(u.id, `❌ 스케줄 취소(숙소 삭제): ${s.date} ${s.time || ''} - ${s.task || ''}`, 'warning');
+    }
+    if (logMsg) await this.addLog(logMsg, true);
+    return total;
+  }
+
   async delProp(id) {
     const p = this.prop(id);
-    await API.delete('properties', id);
-    this.properties = this.properties.filter(x => x.id !== parseInt(id));
-    await this.addLog(`숙소 [${p?.name}] 삭제`, true);
+    const plan = this.propLinkedPlan([+id]);
+    const linked = ['bookings', 'schedule', 'expenses', 'chats', 'internet', 'recurring'].reduce((s, k) => s + plan[k].length, 0);
+    await this.purge(plan, `숙소 [${p?.name}] 삭제${linked ? ` (연결 데이터 ${linked}건 함께 삭제)` : ''}`, { notify: true });
   }
 
   // ===== 예약 =====
   async addBooking(d) {
     const p = this.prop(d.propId);
-    const c = await API.create('bookings', { ...d, price:num(d.price), people:+d.people, propId:+d.propId });
+    const c = await API.create('bookings', { ...d, price:num(d.price), people:+d.people, propId:+d.propId, createdAt: nowTime() });
     this.bookings.push(c);
     await this.addLog(`${p.name}: ${d.guest}님 예약 등록`);
     if (p?.manager) {
       await this.notify(p.manager, `📅 [${p.name}] 신규 예약: ${d.guest}님 ${d.checkIn}~${d.checkOut}`, 'info', { type:'detail', propId:p.id });
     }
+    return c;
   }
 
   async updateBooking(id, d) {
@@ -425,13 +494,43 @@ class Store {
     const i = this.bookings.findIndex(b => b.id === parseInt(id));
     if (i > -1) this.bookings[i] = u;
     await this.addLog(`예약 수정 (${d.guest})`, true);
+    return u;
   }
 
   async delBooking(id) {
     const b = this.bookings.find(x => x.id === parseInt(id));
+    // 연결된 청소 스케줄도 취소 (담당자에게 취소 알림)
+    for (const s of this.schedule.filter(s => isCleaningSched(s) && String(s.bookingId) === String(id))) {
+      await this.delSchedule(s.id);
+    }
     await API.delete('bookings', id);
     this.bookings = this.bookings.filter(x => x.id !== parseInt(id));
     await this.addLog(`예약 취소 (${b?.guest})`, true);
+  }
+
+  /* [v3.5] 예약의 청소 담당자 배정 ↔ 스케줄 자동 연동
+     plan: { staff: 담당자 이름('' = 미배정), date, time }
+     담당자 스케줄의 '예약 연동 청소' 1건을 만들거나 고치거나 지운다. 업무/메모는 처음 만들 때만 채운다
+     (담당자가 스케줄에서 직접 고친 내용을 예약 저장이 덮어쓰지 않도록). */
+  async setBookingCleaning(b, plan = {}) {
+    if (!b || b.id == null) return null;
+    const linked = this.schedule.filter(s => isCleaningSched(s) && String(s.bookingId) === String(b.id));
+    const staff = String(plan.staff || '').trim();
+    if (!staff) {
+      for (const s of linked) await this.delSchedule(s.id);
+      return null;
+    }
+    const base = { staff, date: plan.date || b.checkOut, time: plan.time || '11:00', propId: +b.propId };
+    if (linked.length) {
+      const [cur, ...dups] = linked;
+      for (const s of dups) await this.delSchedule(s.id);
+      const changed = cur.staff !== base.staff || cur.date !== base.date || (cur.time || '') !== base.time || +cur.propId !== base.propId;
+      return changed ? await this.updateSchedule(cur.id, base) : cur;
+    }
+    return await this.addSchedule({
+      ...base, task: '퇴실 청소', memo: `${b.guest || ''}님 퇴실 (${b.checkIn}~${b.checkOut})`,
+      alarm: [], bookingId: b.id, kind: 'cleaning'
+    });
   }
 
   // ===== 채팅 =====
@@ -504,10 +603,26 @@ class Store {
   }
 
   // ===== 지출 =====
-  async addExpense(d) {
-    const c = await API.create('expenses', { ...d, amount:num(d.amount), propId:+d.propId });
+  async addExpense(d, opts = {}) {
+    const majorCat = String(d.majorCat ?? '').trim();
+    const category = String(d.category ?? '').trim();
+    // 목록에 없는 분류는 통합 표에 열이 없어 안 보이므로 먼저 카테고리에 등록한다 (시트 동기화·엑셀 등 모든 경로 공통)
+    await this.ensureExpenseCategory(majorCat, category);
+    const c = await API.create('expenses', { ...d, majorCat, category, amount:num(d.amount), propId:+d.propId, createdAt: nowTime() });
     this.expenses.push(c);
-    await this.addLog(`[${d.category}] 지출 ₩${(+d.amount).toLocaleString()}`, true);
+    if (!opts.silent) await this.addLog(`[${category}] 지출 ${fmt(d.amount)}`, true);
+    return c;
+  }
+
+  async ensureExpenseCategory(majorCat, category) {
+    if (!majorCat || !category) return false;
+    let majorAdded = false, subAdded = false;
+    if (!this.majorCats.includes(majorCat)) { this.majorCats.push(majorCat); majorAdded = true; }
+    if (!Array.isArray(this.subCats[majorCat])) this.subCats[majorCat] = [];
+    if (!this.subCats[majorCat].includes(category)) { this.subCats[majorCat].push(category); subAdded = true; }
+    if (majorAdded) await API.setAll('majorCats', this.majorCats);
+    if (majorAdded || subAdded) await API.setAll('subCats', this.subCats);
+    return majorAdded || subAdded;
   }
 
   async delExpense(id) {
@@ -515,6 +630,8 @@ class Store {
     if (exp?.syncKey?.startsWith('net_')) {
       if (!confirm('인터넷 연동 항목입니다. 함께 삭제됩니다.')) return;
       const netId = parseInt(exp.syncKey.substring(4));
+      const rule = (this.recurring || []).find(r => String(r.internetId) === String(netId));
+      if (rule) await this.delRecurring(rule.id, { silent: true });
       await API.delete('internet', netId);
       this.internet = this.internet.filter(n => n.id !== netId);
     }
@@ -526,8 +643,12 @@ class Store {
   // ===== 인터넷 (지출 자동 연동) =====
   async upsertInternet(d) {
     let net;
-    if (d.id && this.internet.find(n => n.id == d.id)) {
-      net = await API.update('internet', d.id, { ...d, monthly:+d.monthly, propId:+d.propId });
+    const pay = { payDay: d.payDay ? +d.payDay : '', payStart: d.payStart || '' };
+    delete d.payStart;
+    d.payDay = pay.payDay;
+    const isEdit = !!(d.id && this.internet.find(n => n.id == d.id));
+    if (isEdit) {
+      net = await API.update('internet', d.id, { ...d, monthly:num(d.monthly), propId:+d.propId });
       const i = this.internet.findIndex(n => n.id == d.id);
       this.internet[i] = net;
       const ex = this.expenses.find(e => e.syncKey === 'net_'+net.id);
@@ -539,8 +660,9 @@ class Store {
       }
     } else {
       d.id = Date.now();
-      net = await API.create('internet', { ...d, monthly:+d.monthly, propId:+d.propId });
+      net = await API.create('internet', { ...d, monthly:num(d.monthly), propId:+d.propId });
       this.internet.push(net);
+      await this.ensureExpenseCategory('고정지출', '인터넷비');
       const ex = await API.create('expenses', {
         syncKey: 'net_'+net.id,
         propId: net.propId,
@@ -552,7 +674,19 @@ class Store {
       });
       this.expenses.push(ex);
     }
-    await this.addLog(`인터넷 ${d.id?'수정':'등록'} (지출 자동연동)`, true);
+    // 자동이체일을 설정하면 매월 '고정지출 > 인터넷비' 정기 지출 규칙으로 연결
+    const rule = (this.recurring || []).find(r => String(r.internetId) === String(net.id));
+    if (pay.payDay) {
+      await this.upsertRecurring({
+        ...(rule || {}), internetId: net.id, propId: net.propId, majorCat: '고정지출', category: '인터넷비',
+        amount: net.monthly, payDay: pay.payDay, startMonth: pay.payStart || rule?.startMonth || todayStr().slice(0, 7),
+        memo: `${net.provider} ${net.plan}`, active: true
+      }, { silent: true });
+    } else if (rule) {
+      await this.delRecurring(rule.id, { silent: true });
+    }
+    await this.addLog(`인터넷 ${isEdit?'수정':'등록'} (지출 자동연동${pay.payDay ? ` · 매월 ${payDayLabel(pay.payDay)} 자동이체` : ''})`, true);
+    return net;
   }
 
   async delInternet(id) {
@@ -561,9 +695,74 @@ class Store {
     const ex = this.expenses.find(e => e.syncKey === 'net_'+net.id);
     if (ex) await API.delete('expenses', ex.id);
     this.expenses = this.expenses.filter(e => e.syncKey !== 'net_'+net.id);
+    // 자동이체 규칙은 삭제하되, 이미 등록된 월별 지출은 실제 납부 기록이므로 남긴다
+    const rule = (this.recurring || []).find(r => String(r.internetId) === String(net.id));
+    if (rule) await this.delRecurring(rule.id, { silent: true });
     await API.delete('internet', id);
     this.internet = this.internet.filter(n => n.id !== parseInt(id));
     await this.addLog('인터넷 삭제', true);
+  }
+
+  // ===== [v3.5] 정기 지출 (매월 자동이체) =====
+  async upsertRecurring(d, opts = {}) {
+    const rec = {
+      ...d,
+      propId: +d.propId,
+      majorCat: String(d.majorCat || '').trim(),
+      category: String(d.category || '').trim(),
+      amount: num(d.amount),
+      payDay: Math.min(31, Math.max(1, Math.floor(+d.payDay) || 1)),
+      startMonth: d.startMonth || todayStr().slice(0, 7),
+      endMonth: d.endMonth || '',
+      active: d.active !== false
+    };
+    let saved;
+    if (rec.id && this.recurring.find(r => r.id == rec.id)) {
+      saved = await API.update('recurring', rec.id, rec);
+      const i = this.recurring.findIndex(r => r.id == rec.id);
+      this.recurring[i] = saved;
+    } else {
+      rec.id = Date.now();
+      rec.createdAt = nowTime();
+      rec.lastMonth = '';
+      saved = await API.create('recurring', rec);
+      this.recurring.push(saved);
+    }
+    await this.ensureExpenseCategory(saved.majorCat, saved.category);
+    if (!opts.silent) await this.addLog(`정기 지출 ${d.id ? '수정' : '등록'}: ${this.prop(saved.propId)?.name || ''} ${saved.category} ${fmt(saved.amount)} (매월 ${payDayLabel(saved.payDay)})`, true);
+    return saved;
+  }
+
+  async delRecurring(id, opts = {}) {
+    const r = this.recurring.find(x => x.id == id);
+    await API.delete('recurring', id);
+    this.recurring = this.recurring.filter(x => x.id != id);
+    if (!opts.silent && r) await this.addLog(`정기 지출 삭제: ${this.prop(r.propId)?.name || ''} ${r.category}`, true);
+  }
+
+  // 자동이체일이 지난 달 중 아직 등록하지 않은 지출을 등록한다. 반환: 등록 건수
+  async runRecurring(today = todayStr()) {
+    let created = 0;
+    for (const r of [...(this.recurring || [])]) {
+      const due = recurringDueMonths(r, today);
+      if (!due.length || !this.prop(r.propId)) continue;
+      for (const { ym, date } of due) {
+        const key = `rec_${r.id}_${ym}`;
+        if (!this.expenses.some(e => e.syncKey === key)) {
+          await this.addExpense({
+            syncKey: key, recurringId: r.id, propId: r.propId, majorCat: r.majorCat, category: r.category,
+            amount: r.amount, date, memo: `${r.memo || r.category} (정기 자동이체)`
+          }, { silent: true });
+          created++;
+        }
+      }
+      r.lastMonth = due[due.length - 1].ym;
+      const saved = await API.update('recurring', r.id, { lastMonth: r.lastMonth });
+      const i = this.recurring.findIndex(x => x.id == r.id);
+      if (i > -1) this.recurring[i] = saved;
+    }
+    if (created) await this.addLog(`🔁 정기 지출 자동 등록 ${created}건`, true);
+    return created;
   }
 
   // ===== 사용자 =====
@@ -655,17 +854,46 @@ class Store {
 
   // ===== 스케줄 =====
   async addSchedule(d) {
-    const c = await API.create('schedule', { ...d, propId:+d.propId, alarm:d.alarm||[], createdBy:this.currentUser.id });
+    const c = await API.create('schedule', { ...d, propId:+d.propId, alarm:d.alarm||[], createdBy:this.currentUser.id, createdAt: nowTime() });
     this.schedule.push(c);
     await this.addLog(`스케줄 등록: ${d.date} ${d.time} ${d.staff}`);
-    
+
     const targetUser = this.userByName(d.staff);
     if (targetUser && targetUser.id !== this.currentUser.id) {
       await this.notify(targetUser.id, `📅 새 스케줄 배정: ${d.date} ${d.time} - ${d.task}`, 'info', { type:'schedule' });
     }
     if (this.currentUser.role !== 'Admin') {
-      await this.notifyAdmins(`📅 ${this.currentUser.name}님 스케줄 등록: ${d.date} ${d.time} ${d.task}`, 'info', { type:'admin', tab:'staff' });
+      await this.notifyAdmins(`📅 ${this.currentUser.name}님 스케줄 등록: ${d.date} ${d.time} ${d.task}`, 'info', { type:'admin', tab:'bookings' });
     }
+    return c;
+  }
+
+  // [v3.5] 스케줄 수정 (달력에서 클릭 → 수정). 담당자·일시가 바뀌면 관련 담당자에게 알림
+  async updateSchedule(id, d) {
+    const i = this.schedule.findIndex(x => String(x.id) === String(id));
+    if (i < 0) throw new Error('스케줄을 찾을 수 없습니다');
+    const old = this.schedule[i];
+    const patch = { ...d, updatedAt: nowTime(), updatedBy: this.currentUser?.id };
+    if (patch.propId !== undefined) patch.propId = +patch.propId;
+    const u = await API.update('schedule', old.id, patch);
+    this.schedule[i] = u;
+    await this.addLog(`스케줄 수정: ${u.date} ${u.time} ${u.staff} (${u.task || ''})`);
+
+    const me = this.currentUser;
+    const tell = async (name, msg, type) => {
+      const t = this.userByName(name);
+      if (t && t.id !== me?.id) await this.notify(t.id, msg, type, { type:'schedule' });
+    };
+    if (old.staff !== u.staff) {
+      await tell(old.staff, `❌ 스케줄 담당 변경(해제): ${old.date} ${old.time} - ${old.task}`, 'warning');
+      await tell(u.staff, `📅 새 스케줄 배정: ${u.date} ${u.time} - ${u.task}`, 'info');
+    } else if (old.date !== u.date || old.time !== u.time) {
+      await tell(u.staff, `🕒 스케줄 변경: ${old.date} ${old.time} → ${u.date} ${u.time} - ${u.task}`, 'info');
+    }
+    if (me && me.role !== 'Admin') {
+      await this.notifyAdmins(`✏️ ${me.name}님 스케줄 수정: ${u.date} ${u.time} ${u.task}`, 'info', { type:'admin', tab:'bookings' });
+    }
+    return u;
   }
 
   async delSchedule(id) {
@@ -683,12 +911,12 @@ class Store {
   // ===== 물품 =====
   async upsertProduct(d) {
     if (d.id && this.products.find(p => p.id == d.id)) {
-      const u = await API.update('products', d.id, { ...d, price:+d.price });
+      const u = await API.update('products', d.id, { ...d, price:num(d.price) });
       const i = this.products.findIndex(p => p.id == d.id);
       this.products[i] = u;
     } else {
       d.id = Date.now();
-      d.price = +d.price;
+      d.price = num(d.price);
       const c = await API.create('products', d);
       this.products.push(c);
     }
@@ -774,6 +1002,7 @@ async fetchPublicSiteConfig() {
         users: this.users.map(u => ({ ...u, pw: u.id === 'admin' ? u.pw : '****' })),
         chats: this.chats,
         schedule: this.schedule,
+        recurring: this.recurring,
         internet: this.internet,
         products: this.products,
         groups: this.groups,
@@ -794,7 +1023,7 @@ async fetchPublicSiteConfig() {
       throw new Error('잘못된 백업 파일 형식');
     }
     const d = backupData.data;
-    const collections = ['properties','bookings','expenses','chats','schedule','internet','products','groups','platforms','majorCats','subCats','customerMemos','opsData','siteConfig','securitySettings'];
+    const collections = ['properties','bookings','expenses','chats','schedule','recurring','internet','products','groups','platforms','majorCats','subCats','customerMemos','opsData','siteConfig','securitySettings'];
     let restored = 0;
     for (const key of collections) {
       if (d[key] !== undefined) {
@@ -811,7 +1040,7 @@ async fetchPublicSiteConfig() {
   async checkScheduledNotifications() {
     if (!this.currentUser) return;
     const today = todayStr();
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const tomorrow = addDays(today, 1);
     const notifKey = `qj_notif_${today}_${this.currentUser.id}`;
     if (sessionStorage.getItem(notifKey)) return;
 
@@ -969,14 +1198,41 @@ async fetchPublicSiteConfig() {
     this.subCats[majorCat][idx] = newName;
     let updated = 0;
     for (const exp of this.expenses) {
-      if (exp.majorCat === majorCat && exp.category === oldName) {
+      if (String(exp.majorCat || '').trim() === majorCat && String(exp.category || '').trim() === oldName) {
         exp.category = newName;
-        await API.update('expenses', exp.id, exp);
+        await API.update('expenses', exp.id, { category: newName });
         updated++;
       }
     }
+    for (const r of this.recurring || []) {
+      if (r.majorCat === majorCat && r.category === oldName) { r.category = newName; await API.update('recurring', r.id, { category: newName }); }
+    }
     await API.setAll('subCats', this.subCats);
     await this.addLog(`카테고리 이름 변경: ${oldName} → ${newName} (${updated}건 동기화)`);
+  }
+
+  // [v3.5] 대분류 이름 변경: 기존에는 목록만 바뀌고 지출의 대분류는 그대로라 통합 표에서 통째로 사라졌다
+  async renameMajorCat(oldName, newName) {
+    const idx = this.majorCats.indexOf(oldName);
+    if (idx < 0 || !newName || this.majorCats.includes(newName)) return 0;
+    this.majorCats[idx] = newName;
+    this.subCats[newName] = this.subCats[oldName] || [];
+    delete this.subCats[oldName];
+    let updated = 0;
+    for (const exp of this.expenses) {
+      if (String(exp.majorCat || '').trim() === oldName) {
+        exp.majorCat = newName;
+        await API.update('expenses', exp.id, { majorCat: newName });
+        updated++;
+      }
+    }
+    for (const r of this.recurring || []) {
+      if (r.majorCat === oldName) { r.majorCat = newName; await API.update('recurring', r.id, { majorCat: newName }); }
+    }
+    await API.setAll('majorCats', this.majorCats);
+    await API.setAll('subCats', this.subCats);
+    await this.addLog(`대분류 이름 변경: ${oldName} → ${newName} (${updated}건 동기화)`);
+    return updated;
   }
 
   // ===== [v3.1] AI 인사이트 =====

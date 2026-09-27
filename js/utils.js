@@ -1,5 +1,11 @@
-window.fmt = n => '₩' + (n || 0).toLocaleString();
-window.todayStr = () => new Date().toISOString().split('T')[0];
+// 금액 표시 (천 단위 콤마). 문자열·음수도 안전하게 처리한다
+window.fmt = n => { const v = Math.round(num(n)); return (v < 0 ? '-₩' : '₩') + Math.abs(v).toLocaleString('ko-KR'); };
+
+// 로컬(한국) 기준 'YYYY-MM-DD'. toISOString 은 UTC 라 새벽 0~9시에 하루 전 날짜가 나온다
+window.ymdLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+window.todayStr = () => ymdLocal(new Date());
+window.addDays = (ds, n) => { const [y, m, d] = ds.split('-').map(Number); return ymdLocal(new Date(y, m - 1, d + n)); };
+window.dowKo = ds => '일월화수목금토'[new Date(`${ds}T00:00:00`).getDay()];
 
 window.showLoading = (show=true) => {
   const el = document.getElementById('loading');
@@ -67,6 +73,110 @@ window.num = v => {
 
 // 1,000원 단위 반올림 (판매가 주당 → 1박 자동계산 등)
 window.round1000 = n => Math.round(num(n) / 1000) * 1000;
+
+/* ===== [v3.5] 금액 입력칸 천 단위 콤마 =====
+   type="number" 는 콤마를 표시할 수 없어 text + inputmode=numeric 으로 바꾸고, 입력하는 동안 콤마를 넣는다.
+   읽을 때는 num() 이 콤마를 걷어내므로 저장 로직은 반드시 num() 을 거친다. 음수는 data-neg 칸만 허용. */
+window.moneyAttrs = (allowNeg = false) => `type="text" inputmode="numeric" autocomplete="off" data-money${allowNeg ? ' data-neg' : ''}`;
+
+// 입력칸 초기값: 0/빈 값은 비워 두고(placeholder 노출), keepZero 면 '0'
+window.moneyVal = (v, keepZero = false) => {
+  if (v === '' || v === null || v === undefined) return '';
+  const n = Math.round(num(v));
+  if (!n && !keepZero) return '';
+  return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('ko-KR');
+};
+window.setMoney = (el, v) => { if (el) el.value = moneyVal(v); };
+
+window.fmtMoneyText = (raw, allowNeg = false) => {
+  const s = String(raw ?? '');
+  const neg = allowNeg && s.trim().startsWith('-');
+  const digits = s.replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, '');
+  if (!digits) return neg ? '-' : '';
+  return (neg ? '-' : '') + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+};
+
+// 콤마를 다시 넣은 뒤에도 커서가 같은 숫자 뒤에 오도록 복원
+window.formatMoneyInput = el => {
+  const old = el.value;
+  const next = fmtMoneyText(old, el.hasAttribute('data-neg'));
+  if (next === old) return;
+  const pos = el.selectionStart ?? old.length;
+  const digitsBefore = old.slice(0, pos).replace(/[^0-9]/g, '').length;
+  el.value = next;
+  let i = next.startsWith('-') ? 1 : 0, seen = 0;
+  while (i < next.length && seen < digitsBefore) { if (/\d/.test(next[i])) seen++; i++; }
+  try { el.setSelectionRange(i, i); } catch (e) { /* 포커스 없는 칸 */ }
+};
+
+// 모바일 숫자 키패드에는 '-' 가 없어 ± 버튼으로 부호를 바꾼다
+window.toggleMoneySign = id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const v = el.value.trim();
+  el.value = v.startsWith('-') ? v.slice(1) : (v ? '-' + v : '-');
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.focus();
+};
+
+// 캡처 단계에서 먼저 포맷 → 각 폼의 input 리스너(합계 재계산 등)는 정리된 값을 본다
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t && t.matches && t.matches('input[data-money]')) formatMoneyInput(t);
+}, true);
+
+// 엑셀 내보내기: 지정한 머리글 열의 숫자에 천 단위 콤마 서식(#,##0)
+window.xlsxMoneyCols = (ws, headers) => {
+  if (!ws || !ws['!ref'] || typeof XLSX === 'undefined') return ws;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const h = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+    if (!h || !headers.includes(h.v)) continue;
+    for (let r = range.s.r + 1; r <= range.e.r; r++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell && cell.t === 'n') cell.z = '#,##0';
+    }
+  }
+  return ws;
+};
+
+/* ===== [v3.5] 정기 지출 (매월 자동이체) =====
+   규칙: { id, propId, majorCat, category, amount, payDay(1~31, 31=말일), startMonth 'YYYY-MM', endMonth, active, lastMonth }
+   lastMonth 까지는 이미 처리한 달 → 등록된 지출을 지워도 다시 만들지 않는다. */
+window.payDayLabel = d => (+d >= 31 ? '말일' : `${+d}일`);
+
+// 해당 월의 자동이체 날짜 (말일보다 큰 날은 말일로)
+window.recurringDate = (ym, day) => {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  const d = Math.min(Math.max(1, Math.floor(+day) || 1), last);
+  return `${ym}-${String(d).padStart(2, '0')}`;
+};
+
+// today 까지 자동이체일이 도래했는데 아직 처리하지 않은 달 목록 (오래된 달부터, 최대 cap 개월)
+window.recurringDueMonths = (rule, today = todayStr(), cap = 36) => {
+  if (!rule || rule.active === false || !/^\d{4}-\d{2}$/.test(rule.startMonth || '')) return [];
+  const out = [];
+  let [y, m] = rule.startMonth.split('-').map(Number);
+  const thisYm = today.slice(0, 7);
+  for (let guard = 0; guard < 600; guard++) {
+    const ym = `${y}-${String(m).padStart(2, '0')}`;
+    if (ym > thisYm || (rule.endMonth && ym > rule.endMonth)) break;
+    const date = recurringDate(ym, rule.payDay);
+    if (date <= today && !(rule.lastMonth && ym <= rule.lastMonth)) out.push({ ym, date });
+    if (++m > 12) { m = 1; y++; }
+  }
+  return out.slice(-cap);
+};
+window.nextMonthStr = ym => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; };
+
+// 등록 시각(ms): createdAt 이 있으면 그것, 없으면 Date.now() 로 발급된 id. 시드처럼 작은 id 는 0 (가장 오래된 것으로 취급)
+window.regTime = x => {
+  if (!x) return 0;
+  if (x.createdAt) { const t = Date.parse(String(x.createdAt).replace(' ', 'T')); if (!isNaN(t)) return t; }
+  const id = Number(x.id);
+  return id > 1e12 ? Math.floor(id) : 0;
+};
 
 // ── 매출 집계 기준 (총 매출액 / 플랫폼 매출액) ──
 window.REVENUE_BASIS_KEY = 'qj_revenue_basis';

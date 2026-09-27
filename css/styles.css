@@ -28,9 +28,6 @@ body { font-family: 'Pretendard', sans-serif; }
 
 input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
 
-/* ===== Calendar ===== */
-.cal-cell { min-height: 90px; transition: all .2s; }
-.cal-cell:hover { background: #eff6ff; }
 
 /* ===== Ops Table ===== */
 .ops-table td { border: 1px solid #e2e8f0; padding: 6px 8px; font-size: 11px; }
@@ -509,27 +506,77 @@ html.dark .scrollbar::-webkit-scrollbar-thumb { background: #475569; }
 .heat-3 { background: #2563eb; }
 .heat-4 { background: #1e40af; }
 .heat-5 { background: #1e3a8a; }
-/* ===== [v3.4] 달력 - 체크인/체크아웃 대각선 분할 ===== */
-.cal-cell { position: relative; }
-.cal-layer { position: absolute; inset: 0; z-index: 1; }
-.cal-layer:hover { filter: brightness(0.94); }
-/* 좌상단 삼각형 = 그날 퇴실 / 우하단 삼각형 = 그날 입실 */
-.cal-out { clip-path: polygon(0 0, 100% 0, 0 100%); }
-.cal-in  { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
-.cal-split {
-  position: absolute; inset: 0; z-index: 2; pointer-events: none;
-  background: linear-gradient(to bottom right, transparent calc(50% - 0.5px), #cbd5e1 calc(50% - 0.5px), #cbd5e1 calc(50% + 0.5px), transparent calc(50% + 0.5px));
+/* ===== [v3.5] 달력 - 에어비앤비식 연결 바 =====
+   주(week) 한 줄 = 7칸 그리드 + 그 위에 절대배치한 바.
+   바 좌표는 '칸 단위 × 100%/7' 이라 칸 사이 간격 없이 테두리로 구분한다. */
+.cal { --cal-lane: 24px; }
+.cal-head { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); font-size: 10px; font-weight: 900; color: #94a3b8; text-align: center; padding-bottom: 6px; }
+.cal-week { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid #e2e8f0; }
+.cal-week:last-child { border-bottom: 1px solid #e2e8f0; }
+.cal-day {
+  position: relative; min-width: 0; cursor: pointer; transition: background .15s;
+  min-height: calc(52px + var(--lanes) * var(--cal-lane));
+  padding: calc(26px + var(--lanes) * var(--cal-lane)) 3px 3px;
+  border-left: 1px solid #e2e8f0; background: #fff;
 }
-.cal-content { position: relative; z-index: 3; pointer-events: none; height: 100%; display: flex; flex-direction: column; }
-.cal-tag { font-size: 8px; font-weight: 900; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cal-tag-out { text-align: left; }
-.cal-tag-in { text-align: right; margin-top: auto; }
-
-.cal-legend { width: 12px; height: 12px; border-radius: 3px; border: 1px solid #cbd5e1; display: inline-block; }
-.cal-legend-out { background: linear-gradient(to bottom right, #94a3b8 49.5%, transparent 50%); }
-.cal-legend-in  { background: linear-gradient(to bottom right, transparent 49.5%, #2563eb 50%); }
-.cal-legend-full { background: #2563eb33; border-color: #2563eb; }
-
-html.dark .cal-split {
-  background: linear-gradient(to bottom right, transparent calc(50% - 0.5px), #475569 calc(50% - 0.5px), #475569 calc(50% + 0.5px), transparent calc(50% + 0.5px));
+.cal-day:last-child { border-right: 1px solid #e2e8f0; }
+.cal-day:hover { background: #eff6ff; }
+.cal-out-month, .cal-out-month:hover { background: #f8fafc; cursor: default; }
+.cal-out-month .cal-dnum { color: #cbd5e1; }
+.cal-dnum { position: absolute; top: 4px; left: 6px; font-size: 12px; font-weight: 900; color: #334155; line-height: 18px; }
+.cal-today .cal-dnum { background: #2563eb; color: #fff; border-radius: 999px; min-width: 20px; height: 20px; line-height: 20px; text-align: center; padding: 0 5px; left: 3px; top: 2px; }
+.cal-bars { position: absolute; left: 0; right: 0; top: 25px; height: 0; pointer-events: none; }
+.cal-bar {
+  position: absolute; height: 20px; display: flex; align-items: center; gap: 4px; padding: 0 8px;
+  border: 1.5px solid; border-radius: 999px; font-size: 11px; line-height: 1; color: #0f172a;
+  white-space: nowrap; overflow: hidden; cursor: pointer; pointer-events: auto; box-sizing: border-box;
 }
+.cal-bar b { font-weight: 900; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
+.cal-bar-sub { font-weight: 700; opacity: .6; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cal-bar-dot { width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0; }
+.cal-bar.cont-l { border-left-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.cal-bar.cont-r { border-right-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.cal-bar:hover { filter: brightness(.95); box-shadow: 0 1px 4px rgba(15, 23, 42, .18); }
+.cal-chips { display: flex; flex-direction: column; gap: 2px; }
+.cal-chip { font-size: 9px; font-weight: 800; color: #6d28d9; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 4px; padding: 1px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.cal-chip:hover { background: #ede9fe; }
+.cal-more { font-size: 9px; font-weight: 800; color: #94a3b8; }
+.cal-legend-bar { width: 22px; height: 10px; border-radius: 999px; background: #2563eb2e; border: 1.5px solid #2563eb; display: inline-block; }
+.cal-legend-chip { width: 14px; height: 10px; border-radius: 3px; background: #f5f3ff; border: 1px solid #ddd6fe; display: inline-block; }
+@media (max-width: 640px) {
+  .cal { --cal-lane: 20px; }
+  .cal-bar { height: 17px; font-size: 9px; padding: 0 4px; gap: 2px; }
+  .cal-bar-sub, .cal-bar-dot { display: none; }
+  .cal-dnum { font-size: 10px; }
+}
+
+/* 전체 달력(예약 관리 월별) 배지 */
+.cal-mday { cursor: pointer; transition: background .15s; }
+.cal-mday:hover { background: #f8fafc; }
+.cal-badge { font-size: 9px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 2px 4px; border-radius: 4px; margin-top: 2px; cursor: pointer; }
+.cal-badge-sched { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+.cal-more-btn { display: block; width: 100%; margin-top: 3px; font-size: 10px; font-weight: 900; color: #2563eb; background: #eff6ff; border-radius: 4px; padding: 2px 4px; text-align: left; }
+.cal-more-btn:hover { background: #dbeafe; }
+
+html.dark .cal-week, html.dark .cal-day { border-color: #334155; }
+html.dark .cal-day { background: #1e293b; }
+html.dark .cal-day:hover { background: #1e3a8a66; }
+html.dark .cal-out-month, html.dark .cal-out-month:hover { background: #0f172a; }
+html.dark .cal-dnum { color: #cbd5e1; }
+html.dark .cal-out-month .cal-dnum { color: #475569; }
+/* 어두운 플랫폼 색(예: Booking.com 남색)도 보이도록 밝은 막을 한 겹 덧씌운다 */
+html.dark .cal-bar { color: #f1f5f9; background-image: linear-gradient(rgba(255, 255, 255, .12), rgba(255, 255, 255, .12)); }
+html.dark .cal-chip, html.dark .cal-badge-sched { background: #2e1065; color: #ddd6fe; border-color: #5b21b6; }
+html.dark .cal-mday:hover { background: #0f172a; }
+
+/* ===== [v3.5] 예약 폼 컴팩트 =====
+   입력칸 글자 90% · 세로 간격 축소 (라벨 크기는 유지).
+   16px 미만 입력칸은 iOS 사파리가 포커스 시 화면을 확대하므로 휴대폰 폭에서는 기존 크기를 유지한다. */
+.bk-form .bk-inp { padding-top: .5rem; padding-bottom: .5rem; }
+@media (min-width: 640px) {
+  .bk-form input, .bk-form select, .bk-form textarea { font-size: .9rem; }
+  .bk-form .bk-big { font-size: 1.35rem; }
+}
+/* 휴대폰 폭에서는 모달 본문 여백을 줄여 달력 칸을 넓힌다 */
+@media (max-width: 640px) { #modal-content > div.p-8 { padding: 16px; } }
+.money-sign { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 900; padding: 2px 6px; border-radius: 6px; background: rgba(255, 255, 255, .2); }

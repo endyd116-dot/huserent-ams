@@ -83,6 +83,15 @@ export default async (req) => {
     if (req.method === "DELETE") {
       const data = await store.get(collection, { type: "json" }) || [];
       if (!Array.isArray(data)) return jsonResponse({ error: "Not array" }, 400);
+      // 여러 건 한 번에 삭제 (숙소 삭제 시 연결 데이터 정리 등). body: { ids: [...] }
+      // 서버에서 최신 목록을 읽어 걸러내므로 그사이 다른 사용자가 추가한 항목은 보존된다
+      if (isBulk) {
+        const body = await req.json().catch(() => ({}));
+        const ids = new Set((Array.isArray(body.ids) ? body.ids : []).map(String));
+        const kept = data.filter(x => !ids.has(String(x.id)));
+        await store.setJSON(collection, kept);
+        return jsonResponse({ success: true, deleted: data.length - kept.length });
+      }
       const filtered = data.filter(x => String(x.id) !== String(id));
       await store.setJSON(collection, filtered);
       return jsonResponse({ success: true });

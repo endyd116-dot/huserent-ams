@@ -3,16 +3,15 @@ class Router {
     window.router = this;
     this.adminTab = 'main';
     this.expenseMode = 'integrated';
-    this.bkMode = 'month';
-    this.staffMode = 'cal';
+    this.bkMode = 'month';           // 예약 관리: month(월별 전체) | list(숙소별) | sched(스케줄 목록)
+    this._bkShow = { bk: true, sch: true };
     this.admChatsMode = 'list';
     this._statsShowAll = false;
     this._bkDate = new Date();
-    this._staffDate = new Date();
     this._mySchedDate = new Date();
     this._setupGlobalShortcuts();
   }
-  
+
   _setupGlobalShortcuts() {
     document.addEventListener('keydown', e => {
       // Cmd/Ctrl + K → 검색
@@ -27,7 +26,45 @@ class Router {
         const modal = document.getElementById('modal-root');
         if (!modal.classList.contains('hidden')) closeModal();
       }
+      // ← → 달력 이동 (월/일). 입력칸에 커서가 있으면 무시
+      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        this._onCalArrow(e);
+      }
     });
+  }
+
+  /* 달력의 이전/다음 버튼에 data-cal-prev / data-cal-next 를 달아 두면 방향키가 그 버튼을 누른다.
+     모달이 열려 있으면 모달 안의 달력만, 닫혀 있으면 화면의 달력만 움직인다 (뒤에 깔린 화면이 같이 넘어가지 않게). */
+  _onCalArrow(e) {
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (!document.getElementById('search-root').classList.contains('hidden')) return;
+    const modalOpen = !document.getElementById('modal-root').classList.contains('hidden');
+    const scope = document.getElementById(modalOpen ? 'modal-content' : 'app-root');
+    const btn = scope && scope.querySelector(e.key === 'ArrowLeft' ? '[data-cal-prev]' : '[data-cal-next]');
+    if (!btn) return;
+    e.preventDefault();
+    btn.click();
+  }
+
+  // 지금 모달에 떠 있는 달력/하루 보기로 되돌아가는 함수 (없으면 null) — 예약·스케줄 저장 후 모달을 닫지 않고 복귀
+  _modalReturn() {
+    if (document.getElementById('modal-root').classList.contains('hidden')) return null;
+    const ctx = document.querySelector('#modal-content [data-cal-ctx]');
+    if (!ctx) return null;
+    const d = ctx.dataset;
+    if (d.calCtx === 'prop') return () => this.showBookingCalendar(+d.prop, +d.y, +d.m);
+    if (d.calCtx === 'day') return () => this.showDayDetail(d.date, d.scope || 'all');
+    return null;
+  }
+
+  // 저장/삭제 후: 보던 달력 모달로 돌아가거나(없으면 닫기) 뒤 화면도 새 데이터로 다시 그린다
+  async _afterDataChange(back) {
+    if (back) back(); else closeModal();
+    if (document.querySelector('[data-admin]')) await this.renderAdminTab();
+    else if (this._page === 'mySchedule') await this.renderMySchedule();
+    else if (this._page === 'home') await this.renderHome();
+    lucide.createIcons();
   }
   
   init() {
@@ -43,6 +80,7 @@ class Router {
   
   async go(r, p={}) {
     const fn = {home:this.renderHome, admin:this.renderAdmin, chat:this.renderChat, mySchedule:this.renderMySchedule}[r];
+    if (fn) this._page = r === 'chat' ? 'home' : r;
     if (fn) await fn.call(this, p);
     lucide.createIcons();
     window.scrollTo(0,0);
@@ -379,56 +417,106 @@ class Router {
 
   showBookingCalendar(propId, y, m) {
     const p = store.prop(propId);
+    if (!p) { toast('매물을 찾을 수 없습니다','error'); return; }
     const now = new Date();
     const year = y ?? now.getFullYear();
     const month = m ?? now.getMonth();
-    window._calPropId = propId;
-    openModal(`📅 ${p.name}`, `<div class="flex justify-between items-center mb-6 flex-wrap gap-2"><div class="flex items-center gap-2"><button onclick="router.showBookingCalendar(${propId},${month===0?year-1:year},${month===0?11:month-1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-left" class="w-5 h-5"></i></button><h3 class="text-2xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router.showBookingCalendar(${propId},${month===11?year+1:year},${month===11?0:month+1})" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-right" class="w-5 h-5"></i></button><button onclick="router.showBookingCalendar(${propId})" class="bg-blue-600 text-white px-3 py-2 rounded-xl font-black text-xs">오늘</button></div><div class="flex items-center gap-4 text-xs font-bold flex-wrap">${calendarLegend()}<span class="flex items-center gap-2 flex-wrap">${store.platforms.map(pl=>`<span class="flex items-center gap-1"><span class="w-3 h-3 rounded" style="background:${pl.color}"></span>${esc(pl.name)}</span>`).join('')}</span></div></div><div class="bg-slate-50 p-4 rounded-2xl">${buildCalendar(year, month, propId, 'router.onCalendarClick')}</div>`, 'max-w-5xl');
+    const prevY = month === 0 ? year - 1 : year, prevM = month === 0 ? 11 : month - 1;
+    const nextY = month === 11 ? year + 1 : year, nextM = month === 11 ? 0 : month + 1;
+    openModal(`📅 ${esc(p.name)}`, `<div data-cal-ctx="prop" data-prop="${propId}" data-y="${year}" data-m="${month}">
+      <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <div class="flex items-center gap-2">
+          <button data-cal-prev onclick="router.showBookingCalendar(${propId},${prevY},${prevM})" title="이전 달 (←)" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+          <h3 class="text-2xl font-black px-3">${year}년 ${month + 1}월</h3>
+          <button data-cal-next onclick="router.showBookingCalendar(${propId},${nextY},${nextM})" title="다음 달 (→)" class="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
+          <button onclick="router.showBookingCalendar(${propId})" class="bg-blue-600 text-white px-3 py-2 rounded-xl font-black text-xs">오늘</button>
+          <span class="hidden sm:inline text-[10px] font-bold text-slate-400 ml-1">⌨ ← → 월 이동</span>
+        </div>
+        <div class="flex items-center gap-4 text-xs font-bold flex-wrap">${calendarLegend('bar')}<span class="flex items-center gap-2 flex-wrap">${store.platforms.map(pl=>`<span class="flex items-center gap-1"><span class="w-3 h-3 rounded" style="background:${pl.color}"></span>${esc(pl.name)}</span>`).join('')}</span></div>
+      </div>
+      <div class="bg-slate-50 p-3 sm:p-4 rounded-2xl">${buildCalendar(year, month, propId, 'router.onCalendarClick')}</div>
+    </div>`, 'max-w-5xl');
     lucide.createIcons();
   }
-  
+
   onCalendarClick(date, bookingId, propId) {
+    const back = this._modalReturn();
     if (bookingId) {
       const b = store.bookings.find(x => x.id === bookingId);
       if (!b) { toast('예약을 찾을 수 없습니다','error'); return; }
       if (!store.canEdit(b.propId)) { toast('수정 권한 없음','error'); return; }
-      this.showBookingForm(b.propId, b);
+      this.showBookingForm(b.propId, b, null, { back });
     } else {
-      const pid = propId ?? window._calPropId;
-      if (!pid) { toast('매물을 먼저 선택하세요','error'); return; }
-      if (!store.canEdit(pid)) { toast('예약 권한 없음','error'); return; }
-      this.showBookingForm(pid, null, date);
+      if (!propId) { toast('매물을 먼저 선택하세요','error'); return; }
+      if (!store.canEdit(propId)) { toast('예약 권한 없음','error'); return; }
+      this.showBookingForm(propId, null, date, { back });
     }
   }
 
-  showBookingForm(propId, booking=null, prefill=null) {
+  // 스케줄(칩·배지) 클릭 → 수정. 관리자 / 본인 담당·등록 / 해당 숙소 담당 매니저만
+  onScheduleClick(id) {
+    const s = store.schedule.find(x => String(x.id) === String(id));
+    if (!s) { toast('스케줄을 찾을 수 없습니다','error'); return; }
+    if (!this._canEditSched(s)) { toast('본인 스케줄만 수정할 수 있습니다','warning'); return; }
+    this.showScheduleForm({ schedule: s, back: this._modalReturn(), mine: this._page === 'mySchedule' });
+  }
+
+  // 청소 담당자 후보: 직원(관리자 외) 먼저, 관리자는 따로. 목록에 없는 기존 담당자도 유지
+  _staffOptions(selected = '', { blank = '' } = {}) {
+    const users = store.users || [];
+    const opt = u => `<option value="${esc(u.name)}" ${u.name === selected ? 'selected' : ''}>${esc(u.name)} · ${roleLabel(u.role)}</option>`;
+    const staff = users.filter(u => u.role !== 'Admin'), admins = users.filter(u => u.role === 'Admin');
+    const known = selected && !users.some(u => u.name === selected);
+    return (blank ? `<option value="">${blank}</option>` : '')
+      + (known ? `<option value="${esc(selected)}" selected>${esc(selected)} (현재 배정)</option>` : '')
+      + (staff.length ? `<optgroup label="직원">${staff.map(opt).join('')}</optgroup>` : '')
+      + (admins.length ? `<optgroup label="관리자">${admins.map(opt).join('')}</optgroup>` : '');
+  }
+
+  showBookingForm(propId, booking=null, prefill=null, opts={}) {
     const p = store.prop(propId);
+    if (!p) { toast('매물을 찾을 수 없습니다','error'); return; }
     const b = booking || {};
     const isEdit = !!booking;
+    const back = opts.back || null;
     const r = propRates(p);
     const a = bookingAmounts(b);
+    const clean = isEdit ? cleaningFor(b.id) : null;
+    const lbl = 'text-[10px] font-black text-slate-400 uppercase';
+    const inp = 'bk-inp w-full px-3 border rounded-xl font-bold mt-0.5';
     const ref = (label, v) => `<div class="flex justify-between gap-2"><span class="opacity-70 font-bold">${label}</span><span class="font-black">${v ? fmt(v) : '-'}</span></div>`;
-    const money = (name, label, val) => `<div><label class="text-[10px] font-black opacity-70 uppercase">${label}</label><input type="number" name="${name}" value="${val || ''}" min="0" step="1" placeholder="0" class="bk-amt w-full p-3 bg-white/10 border-2 border-white/20 rounded-xl font-black outline-none focus:border-white mt-1"></div>`;
+    const money = (name, label, val, allowNeg = false) => `<div><label class="text-[10px] font-black opacity-70 uppercase">${label}</label><div class="relative mt-0.5">${allowNeg ? `<button type="button" onclick="toggleMoneySign('bk_${name}')" class="money-sign" title="음수(-) 전환">±</button>` : ''}<input ${moneyAttrs(allowNeg)} id="bk_${name}" name="${name}" value="${moneyVal(val)}" placeholder="0" class="bk-amt bk-inp w-full ${allowNeg ? 'pl-9 pr-3' : 'px-3'} bg-white/10 border-2 border-white/20 rounded-xl font-black outline-none focus:border-white"></div></div>`;
+    // 신규 예약: 청소비는 매물 기준가(1회)로 미리 채운다
+    const cleanInit = a.hasNew ? a.clean : (isEdit ? '' : r.cleanOnce);
 
-    openModal(`${isEdit?'✏️':'🆕'} ${p.name}`, `<form id="bk-form" class="space-y-5">
-      <div class="grid grid-cols-3 gap-4">
-        <div><label class="text-[10px] font-black text-slate-400 uppercase">체크인</label><input type="date" name="checkIn" value="${b.checkIn||prefill||todayStr()}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
-        <div><label class="text-[10px] font-black text-slate-400 uppercase">체크아웃</label><input type="date" name="checkOut" value="${b.checkOut||''}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
-        <div><label class="text-[10px] font-black text-slate-400 uppercase">일수</label><div id="bkNights" class="w-full p-3 bg-slate-100 rounded-xl font-black text-center mt-1">-</div></div>
+    openModal(`${isEdit?'✏️':'🆕'} ${esc(p.name)}`, `<form id="bk-form" class="bk-form space-y-3">
+      <div class="grid grid-cols-3 gap-3">
+        <div><label class="${lbl}">체크인</label><input type="date" name="checkIn" value="${b.checkIn||prefill||todayStr()}" class="${inp}" required></div>
+        <div><label class="${lbl}">체크아웃</label><input type="date" name="checkOut" value="${b.checkOut||''}" class="${inp}" required></div>
+        <div><label class="${lbl}">일수</label><div id="bkNights" class="bk-inp px-3 w-full bg-slate-100 rounded-xl font-black text-center mt-0.5">-</div></div>
       </div>
-      <div class="grid grid-cols-2 gap-4">
-        <input name="guest" value="${b.guest||''}" placeholder="예약자" class="w-full p-3 border rounded-xl font-bold" required>
-        <input name="contact" value="${b.contact||''}" placeholder="연락처" class="w-full p-3 border rounded-xl font-bold" required>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="${lbl}">예약자</label><input name="guest" value="${esc(b.guest||'')}" placeholder="예약자" class="${inp}" required></div>
+        <div><label class="${lbl}">연락처 <span class="normal-case text-slate-300">(선택)</span></label><input name="contact" value="${esc(b.contact||'')}" placeholder="연락처 (선택)" class="${inp}"></div>
       </div>
-      <div class="grid grid-cols-3 gap-4">
-        <input name="nationality" value="${b.nationality||'한국'}" placeholder="국적" class="w-full p-3 border rounded-xl font-bold">
-        <input type="number" name="people" value="${b.people||2}" min="1" placeholder="인원" class="w-full p-3 border rounded-xl font-bold">
-        <select name="platform" class="w-full p-3 border rounded-xl font-bold">${store.platforms.map(pl=>`<option ${b.platform===pl.name?'selected':''}>${pl.name}</option>`).join('')}</select>
+      <div class="grid grid-cols-3 gap-3">
+        <div><label class="${lbl}">국적</label><input name="nationality" value="${esc(b.nationality||'한국')}" placeholder="국적" class="${inp}"></div>
+        <div><label class="${lbl}">인원</label><input type="number" name="people" value="${b.people||2}" min="1" placeholder="인원" class="${inp}"></div>
+        <div><label class="${lbl}">플랫폼</label><select name="platform" class="${inp}">${store.platforms.map(pl=>`<option ${b.platform===pl.name?'selected':''}>${esc(pl.name)}</option>`).join('')}</select></div>
       </div>
 
-      <div class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl text-white space-y-4">
-        <div class="bg-white/10 rounded-xl p-4">
-          <div class="flex justify-between items-center mb-2">
+      <div class="bg-purple-50 border border-purple-200 rounded-xl p-3">
+        <div class="grid grid-cols-3 gap-3">
+          <div><label class="text-[10px] font-black text-purple-600 uppercase">🧹 청소 담당자</label><select name="cleanStaff" id="bkCleanStaff" class="${inp} bg-white">${this._staffOptions(clean?.staff || '', { blank: '미배정' })}</select></div>
+          <div><label class="text-[10px] font-black text-purple-600 uppercase">청소일</label><input type="date" name="cleanDate" id="bkCleanDate" value="${clean?.date || b.checkOut || ''}" class="${inp} bg-white"></div>
+          <div><label class="text-[10px] font-black text-purple-600 uppercase">시간</label><input type="time" name="cleanTime" id="bkCleanTime" value="${clean?.time || '11:00'}" class="${inp} bg-white"></div>
+        </div>
+        <p class="text-[10px] text-purple-600 font-bold mt-1.5">담당자를 배정하면 그 직원의 스케줄에 '퇴실 청소'가 자동 등록되고 알림이 갑니다 (기본: 퇴실일)</p>
+      </div>
+
+      <div class="bg-gradient-to-br from-blue-600 to-blue-800 p-4 sm:p-5 rounded-2xl text-white space-y-3">
+        <div class="bg-white/10 rounded-xl p-3">
+          <div class="flex justify-between items-center mb-1.5">
             <p class="text-[10px] font-black uppercase opacity-70">매물 기준가</p>
             <button type="button" id="bkAutoCalc" class="text-[10px] font-black bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg">🔄 기준가로 자동계산</button>
           </div>
@@ -440,40 +528,41 @@ class Router {
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-2 gap-3">
           ${money('rentFee', '임대료', a.hasNew ? a.rent : '')}
           ${money('mgmtFeeTotal', '관리비 (전체)', a.hasNew ? a.mgmt : '')}
-          ${money('cleanFee', '청소비', a.hasNew ? a.clean : '')}
+          ${money('cleanFee', '청소비', cleanInit)}
           <div class="flex flex-col justify-end">
             <label class="text-[10px] font-black opacity-70 uppercase">플랫폼 매출액</label>
-            <div id="bkPlatformRev" class="w-full p-3 bg-white/20 border-2 border-white/10 rounded-xl font-black mt-1 text-right">₩0</div>
+            <div id="bkPlatformRev" class="bk-inp px-3 w-full bg-white/20 border-2 border-white/10 rounded-xl font-black mt-0.5 text-right">₩0</div>
           </div>
         </div>
-        <p class="text-[10px] opacity-60 font-bold -mt-2">플랫폼 매출액 = 임대료 + 관리비(전체) + 청소비</p>
+        <p class="text-[10px] opacity-60 font-bold -mt-1.5">플랫폼 매출액 = 임대료 + 관리비(전체) + 청소비</p>
 
         <div>
           <label class="text-[10px] font-black opacity-70 uppercase">실 입금 금액 (플랫폼)</label>
-          <input type="number" name="netDeposit" value="${a.hasNew ? a.net : (b.price||'')}" min="0" step="1" placeholder="0" class="bk-amt w-full p-4 bg-white/10 border-2 border-white/20 rounded-xl text-2xl font-black outline-none focus:border-white mt-1" required>
+          <input ${moneyAttrs()} name="netDeposit" value="${moneyVal(a.hasNew ? a.net : (b.price||''))}" placeholder="0" class="bk-amt bk-big w-full px-3 py-2.5 bg-white/10 border-2 border-white/20 rounded-xl text-2xl font-black outline-none focus:border-white mt-0.5" required>
           <p id="bkFeeHint" class="text-[10px] opacity-60 font-bold mt-1"></p>
         </div>
 
-        <div class="grid grid-cols-3 gap-4">
+        <div class="grid grid-cols-3 gap-3">
           ${money('bedding', '이불', a.hasNew ? a.bedding : '')}
           ${money('parking', '주차', a.hasNew ? a.parking : '')}
-          ${money('extraStay', '추가숙박/기타', a.hasNew ? a.extra : '')}
+          ${money('extraStay', '추가숙박/기타 (±)', a.hasNew ? a.extra : '', true)}
         </div>
 
-        <div class="flex justify-between items-center pt-4 border-t border-white/20">
+        <div class="flex justify-between items-center pt-3 border-t border-white/20">
           <span class="text-sm font-black uppercase opacity-80">총 매출액</span>
           <span id="bkTotalRev" class="text-3xl font-black">₩0</span>
         </div>
-        <p class="text-[10px] opacity-60 font-bold -mt-2">총 매출액 = 실 입금 금액 + 이불 + 주차 + 추가숙박/기타</p>
+        <p class="text-[10px] opacity-60 font-bold -mt-1.5">총 매출액 = 실 입금 금액 + 이불 + 주차 + 추가숙박/기타 (할인·환불은 추가숙박/기타에 음수로)</p>
       </div>
 
-      <textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold h-20">${b.memo||''}</textarea>
+      <textarea name="memo" placeholder="메모" class="bk-inp px-3 w-full border rounded-xl font-bold h-16">${esc(b.memo||'')}</textarea>
       <div class="flex gap-3">
-        <button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black">${isEdit?'예약 수정':'예약 등록'}</button>
-        ${isEdit?`<button type="button" onclick="router.deleteBooking(${booking.id})" class="px-8 bg-red-50 text-red-500 rounded-xl font-black">예약 취소</button>`:''}
+        <button type="submit" class="flex-1 bg-slate-900 text-white py-3.5 rounded-xl font-black">${isEdit?'예약 수정':'예약 등록'}</button>
+        ${isEdit?`<button type="button" id="bkDel" class="px-8 bg-red-50 text-red-500 rounded-xl font-black">예약 취소</button>`:''}
+        ${back?`<button type="button" id="bkBack" class="px-5 bg-slate-100 text-slate-600 rounded-xl font-black">← 뒤로</button>`:''}
       </div>
     </form>`, 'max-w-3xl');
 
@@ -502,23 +591,46 @@ class Router {
       const n = nightsOf();
       if (!n) { toast('체크인·체크아웃을 먼저 입력하세요', 'warning'); return; }
       const weeks = Math.ceil(n / 7);
-      el('rentFee').value = r.nightly ? r.nightly * n : '';
-      el('mgmtFeeTotal').value = r.mgmtWeek ? r.mgmtWeek * weeks : '';
-      el('cleanFee').value = r.cleanOnce || '';
-      if (!val('netDeposit')) el('netDeposit').value = (val('rentFee') + val('mgmtFeeTotal') + val('cleanFee')) || '';
+      setMoney(el('rentFee'), r.nightly ? r.nightly * n : '');
+      setMoney(el('mgmtFeeTotal'), r.mgmtWeek ? r.mgmtWeek * weeks : '');
+      setMoney(el('cleanFee'), r.cleanOnce || '');
+      if (!val('netDeposit')) setMoney(el('netDeposit'), (val('rentFee') + val('mgmtFeeTotal') + val('cleanFee')) || '');
       recalc();
     };
 
+    // 청소일은 따로 고치지 않았다면 체크아웃을 따라간다
+    const cleanDate = document.getElementById('bkCleanDate');
+    let cleanDateTouched = !!(clean && clean.date && clean.date !== b.checkOut);
+    cleanDate.addEventListener('input', () => { cleanDateTouched = true; });
+    const syncCleanDate = () => { if (!cleanDateTouched) cleanDate.value = el('checkOut').value; };
+    const cleanStaff = document.getElementById('bkCleanStaff');
+    const syncCleanUi = () => {
+      const on = !!cleanStaff.value;
+      cleanDate.disabled = document.getElementById('bkCleanTime').disabled = !on;
+      cleanDate.classList.toggle('opacity-40', !on);
+      document.getElementById('bkCleanTime').classList.toggle('opacity-40', !on);
+      if (on && !cleanDate.value) cleanDate.value = el('checkOut').value;
+    };
+    cleanStaff.addEventListener('change', syncCleanUi);
+    syncCleanUi();
+
     document.getElementById('bkAutoCalc').onclick = autoCalc;
     f.querySelectorAll('.bk-amt').forEach(x => x.addEventListener('input', recalc));
-    el('checkIn').onchange = el('checkOut').onchange = recalc;
+    el('checkIn').addEventListener('change', recalc);
+    el('checkOut').addEventListener('change', () => { syncCleanDate(); recalc(); });
+    if (isEdit) document.getElementById('bkDel').onclick = () => this.deleteBooking(booking.id, back);
+    if (back) document.getElementById('bkBack').onclick = () => back();
 
-    // 신규 예약이고 금액이 비어 있으면 기준가로 미리 채운다
+    // 신규 예약이고 날짜가 다 있으면 기준가로 미리 채운다
     if (!isEdit && nightsOf()) autoCalc(); else recalc();
 
     f.onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
+      const cleanPlan = { staff: d.cleanStaff || '', date: d.cleanDate || d.checkOut, time: d.cleanTime || '11:00' };
+      delete d.cleanStaff; delete d.cleanDate; delete d.cleanTime;
+      d.guest = (d.guest || '').trim();
+      d.contact = (d.contact || '').trim();
       if (d.checkIn >= d.checkOut) { toast('체크아웃은 체크인 이후','error'); return; }
       const conflict = store.bookings.find(bk => bk.propId===propId && bk.id!==booking?.id && !(d.checkOut<=bk.checkIn || d.checkIn>=bk.checkOut));
       if (conflict) {
@@ -534,20 +646,23 @@ class Router {
       d.propId = propId;
       showLoading(true);
       try {
-        if (isEdit) await store.updateBooking(booking.id, d);
-        else { await store.addBooking(d); store.sendKakaoNotification(`${p.name} 신규 예약: ${d.guest}님 ${d.checkIn}~${d.checkOut}`); }
-        toast(isEdit?'수정됨':'등록됨','success');
-        closeModal();
-        if (document.querySelector('[data-admin]')) await this.renderAdminTab();
+        let saved;
+        if (isEdit) saved = await store.updateBooking(booking.id, d);
+        else { saved = await store.addBooking(d); store.sendKakaoNotification(`${p.name} 신규 예약: ${d.guest}님 ${d.checkIn}~${d.checkOut}`); }
+        try { await store.setBookingCleaning(saved, cleanPlan); }
+        catch (err) { toast('예약은 저장됐지만 청소 스케줄 연동 실패: ' + err.message, 'warning'); }
+        toast(`${isEdit?'수정됨':'등록됨'}${cleanPlan.staff ? ` · 🧹 ${staffNick(cleanPlan.staff)} ${cleanPlan.date} 청소 배정` : ''}`,'success');
+        await this._afterDataChange(back);
       } catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
     };
     lucide.createIcons();
   }
 
-  async deleteBooking(id) {
-    if (!confirm('예약을 취소하시겠습니까?')) return;
+  async deleteBooking(id, back = null) {
+    const hasClean = !!cleaningFor(id);
+    if (!confirm(`예약을 취소하시겠습니까?${hasClean ? '\n연결된 청소 스케줄도 함께 취소됩니다.' : ''}`)) return;
     showLoading(true);
-    try { await store.delBooking(id); toast('취소됨','success'); closeModal(); }
+    try { await store.delBooking(id); toast('취소됨','success'); await this._afterDataChange(back); }
     catch(e) { toast('실패','error'); } finally { showLoading(false); }
   }
 
@@ -858,47 +973,204 @@ class Router {
     const u = store.currentUser;
     const cur = this._mySchedDate;
     const year = cur.getFullYear(), month = cur.getMonth();
-    const myList = store.schedule.filter(s => s.staff === u.name).sort((a,b)=>a.date.localeCompare(b.date));
+    const today = todayStr();
+    const myList = store.schedule.filter(s => s.staff === u.name).sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.time||'').localeCompare(b.time||''));
     const monthList = myList.filter(s => toDateStr(s.date).startsWith(`${year}-${String(month+1).padStart(2,'0')}`));
-    document.getElementById('app-root').innerHTML = `<div class="flex min-h-screen">${UI.Sidebar('mySchedule')}<main class="flex-1 bg-slate-50 min-h-screen">${UI.Header('내 스케줄')}<div class="p-8 max-w-[1600px] mx-auto"><div class="flex justify-between items-center mb-6 flex-wrap gap-3"><div><h2 class="text-3xl font-black">📅 내 스케줄</h2><p class="text-slate-500 mt-1">관리자 배정 + 본인 등록 통합 (양방향 알림 연동)</p></div><div class="flex gap-2 items-center flex-wrap"><button onclick="router._mySchedDate.setMonth(router._mySchedDate.getMonth()-1);router.go('mySchedule')" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router._mySchedDate.setMonth(router._mySchedDate.getMonth()+1);router.go('mySchedule')" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button onclick="router._mySchedDate=new Date();router.go('mySchedule')" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button><button onclick="router.showMyScheduleForm()" class="bg-purple-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄 등록</button></div></div><div class="grid grid-cols-3 gap-4 mb-6 mobile-stack"><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">이번달</p><p class="text-2xl font-black text-purple-600 mt-2">${monthList.length}건</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">전체 예정</p><p class="text-2xl font-black text-blue-600 mt-2">${myList.filter(s=>s.date>=todayStr()).length}건</p></div><div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">오늘</p><p class="text-2xl font-black text-amber-500 mt-2">${myList.filter(s=>s.date===todayStr()).length}건</p></div></div><div class="bg-white p-6 rounded-2xl border mb-6"><h3 class="text-xl font-black mb-4">📆 캘린더</h3>${this._buildScheduleCalendar(year,month,myList)}</div><div class="bg-white rounded-2xl border overflow-hidden"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">📋 ${year}년 ${month+1}월 스케줄</h3></div><div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">일시</th><th class="px-4 py-3 text-left">숙소</th><th class="px-4 py-3 text-left">업무</th><th class="px-4 py-3 text-left">알람</th><th class="px-4 py-3 text-left">메모</th><th class="px-4 py-3 text-left">등록자</th><th class="px-4 py-3"></th></tr></thead><tbody class="text-sm divide-y">${monthList.length?monthList.map(s=>{const isMine=s.createdBy===u.id;return `<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-black">${s.date} ${s.time}</td><td class="px-4 py-3 text-xs">${store.prop(s.propId)?.name||'-'}</td><td class="px-4 py-3">${s.task}</td><td class="px-4 py-3 text-xs">${(s.alarm||[]).map(a=>a+'분').join(', ')||'없음'}</td><td class="px-4 py-3 text-xs text-slate-500">${s.memo||'-'}</td><td class="px-4 py-3 text-xs"><span class="px-2 py-0.5 ${isMine?'bg-purple-100 text-purple-700':'bg-amber-100 text-amber-700'} rounded font-black">${isMine?'본인':'관리자배정'}</span></td><td class="px-4 py-3">${(isMine||u.role==='Admin')?`<button onclick="router.delMySched(${s.id})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`:''}</td></tr>`}).join(''):'<tr><td colspan="7" class="text-center py-8 text-slate-400 font-bold">이번 달 스케줄 없음</td></tr>'}</tbody></table></div></div></div></main></div>`;
+    const rows = monthList.map(s => {
+      const isMine = s.createdBy === u.id;
+      const canDel = isMine || u.role === 'Admin';
+      const clean = isCleaningSched(s);
+      return `<tr class="hover:bg-blue-50/30 cursor-pointer" onclick="router.onScheduleClick(${s.id})">
+        <td class="px-4 py-3 font-black whitespace-nowrap">${esc(s.date)} ${esc(s.time||'')}</td>
+        <td class="px-4 py-3 text-xs">${esc(store.prop(s.propId)?.name||'-')}</td>
+        <td class="px-4 py-3">${clean ? '🧹 ' : ''}${esc(s.task||'')}</td>
+        <td class="px-4 py-3 text-xs">${(s.alarm||[]).map(a=>a+'분').join(', ')||'없음'}</td>
+        <td class="px-4 py-3 text-xs text-slate-500">${esc(s.memo||'-')}</td>
+        <td class="px-4 py-3 text-xs"><span class="px-2 py-0.5 ${clean?'bg-purple-100 text-purple-700':isMine?'bg-purple-100 text-purple-700':'bg-amber-100 text-amber-700'} rounded font-black">${clean?'예약 연동':isMine?'본인':'관리자배정'}</span></td>
+        <td class="px-4 py-3 whitespace-nowrap"><button onclick="event.stopPropagation();router.onScheduleClick(${s.id})" class="text-blue-500 mr-2" title="수정"><i data-lucide="edit-3" class="w-4 h-4"></i></button>${canDel?`<button onclick="event.stopPropagation();router.delMySched(${s.id})" class="text-red-500" title="삭제"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`:''}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('app-root').innerHTML = `<div class="flex min-h-screen">${UI.Sidebar('mySchedule')}<main class="flex-1 bg-slate-50 min-h-screen">${UI.Header('내 스케줄')}<div class="p-8 max-w-[1600px] mx-auto">
+      <div class="flex justify-between items-center mb-6 flex-wrap gap-3">
+        <div><h2 class="text-3xl font-black">📅 내 스케줄</h2><p class="text-slate-500 mt-1">관리자 배정 + 예약 연동 청소 + 본인 등록 통합 · 스케줄을 누르면 수정</p></div>
+        <div class="flex gap-2 items-center flex-wrap">
+          <button data-cal-prev onclick="router._mySchedDate.setMonth(router._mySchedDate.getMonth()-1,1);router.go('mySchedule')" title="이전 달 (←)" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+          <h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3>
+          <button data-cal-next onclick="router._mySchedDate.setMonth(router._mySchedDate.getMonth()+1,1);router.go('mySchedule')" title="다음 달 (→)" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+          <button onclick="router._mySchedDate=new Date();router.go('mySchedule')" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button>
+          <button onclick="router.showScheduleForm({ mine: true })" class="bg-purple-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄 등록</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-4 mb-6 mobile-stack">
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">이번달</p><p class="text-2xl font-black text-purple-600 mt-2">${monthList.length}건</p></div>
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">전체 예정</p><p class="text-2xl font-black text-blue-600 mt-2">${myList.filter(s=>s.date>=today).length}건</p></div>
+        <div class="bg-white p-5 rounded-2xl border"><p class="text-[10px] font-black text-slate-400 uppercase">오늘</p><p class="text-2xl font-black text-amber-500 mt-2">${myList.filter(s=>s.date===today).length}건</p></div>
+      </div>
+      <div class="bg-white p-6 rounded-2xl border mb-6"><div class="flex justify-between items-center mb-4 flex-wrap gap-2"><h3 class="text-xl font-black">📆 캘린더</h3><span class="text-[10px] font-bold text-slate-400">스케줄 클릭 → 수정 · 날짜 클릭 → 그날 전체 · ⌨ ← → 월 이동</span></div>${this._buildScheduleCalendar(year,month,myList)}</div>
+      <div class="bg-white rounded-2xl border overflow-hidden"><div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">📋 ${year}년 ${month+1}월 스케줄</h3></div><div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">일시</th><th class="px-4 py-3 text-left">숙소</th><th class="px-4 py-3 text-left">업무</th><th class="px-4 py-3 text-left">알람</th><th class="px-4 py-3 text-left">메모</th><th class="px-4 py-3 text-left">구분</th><th class="px-4 py-3"></th></tr></thead><tbody class="text-sm divide-y">${rows||'<tr><td colspan="7" class="text-center py-8 text-slate-400 font-bold">이번 달 스케줄 없음</td></tr>'}</tbody></table></div></div>
+    </div></main></div>`;
     lucide.createIcons();
   }
-  
+
+  // 내 스케줄 달력: 스케줄 클릭 → 수정, 날짜 칸 / '+N건' 클릭 → 그날 전체 보기
   _buildScheduleCalendar(year, month, schedList) {
     const first = new Date(year, month, 1);
     const days = new Date(year, month+1, 0).getDate();
     const startDow = first.getDay();
+    const today = todayStr();
     let html = `<div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">${['일','월','화','수','목','금','토'].map(d=>`<div class="text-center py-2">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">`;
     for (let i=0; i<startDow; i++) html += `<div class="min-h-[100px] bg-slate-50/50 rounded-lg"></div>`;
     for (let d=1; d<=days; d++) {
       const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const sch = schedList.filter(s => s.date === ds);
-      html += `<div class="min-h-[100px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${sch.slice(0,3).map(s=>`<div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 bg-purple-100 text-purple-700">${s.time} ${s.task}</div>`).join('')}${sch.length>3?`<div class="text-[8px] text-slate-400 mt-0.5">+${sch.length-3}건</div>`:''}</div>`;
+      const sch = schedList.filter(s => s.date === ds).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+      html += `<div class="cal-mday min-h-[100px] border rounded-lg p-1.5 ${ds===today?'ring-2 ring-blue-500':''}" onclick="router.showDayDetail('${ds}','mine')"><div class="text-xs font-black">${d}</div>${sch.slice(0,3).map(s=>`<div class="cal-badge cal-badge-sched" onclick="event.stopPropagation();router.onScheduleClick(${s.id})" title="${esc(`${s.time||''} ${s.task||''} · ${store.prop(s.propId)?.name||''}`)}">${isCleaningSched(s)?'🧹':'📌'} ${esc(s.time||'')} ${esc(s.task||'')}</div>`).join('')}${sch.length>3?`<button type="button" class="cal-more-btn" onclick="event.stopPropagation();router.showDayDetail('${ds}','mine')">+${sch.length-3}건 더보기</button>`:''}</div>`;
     }
     html += `</div>`;
     return html;
   }
 
-  showMyScheduleForm() {
-    const u = store.currentUser;
-    const props = store.properties.filter(p => store.hasPerm(p.id));
-    openModal('📅 내 스케줄 등록', `<form id="msf" class="space-y-4"><div class="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs font-bold text-purple-700">💡 본인 스케줄 등록 시 관리자에게도 자동 알림 발송</div><div class="grid grid-cols-2 gap-3"><input type="date" name="date" value="${todayStr()}" class="p-3 border rounded-xl font-bold" required><input type="time" name="time" value="10:00" class="p-3 border rounded-xl font-bold" required></div><input type="hidden" name="staff" value="${u.name}"><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${props.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><input name="task" placeholder="업무 (예: 청소, 점검)" class="w-full p-3 border rounded-xl font-bold" required><div class="bg-slate-50 p-4 rounded-xl"><p class="text-xs font-black text-slate-500 uppercase mb-2">🔔 알람 (복수)</p><div class="flex gap-2">${[5,15,30,60].map(m=>`<label class="flex items-center gap-1 px-3 py-2 bg-white rounded-lg cursor-pointer font-bold text-xs"><input type="checkbox" name="a${m}"> ${m}분 전</label>`).join('')}</div></div><input name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold"><button class="w-full bg-purple-600 text-white py-4 rounded-xl font-black uppercase">등록 (관리자 알림)</button></form>`, 'max-w-xl');
-    document.getElementById('msf').onsubmit = async e => {
+  async delMySched(id) {
+    if (!confirm('이 스케줄을 삭제하시겠습니까?')) return;
+    showLoading(true);
+    try { await store.delSchedule(id); toast('삭제됨','success'); await this.go('mySchedule'); }
+    catch(e) { toast('실패: '+e.message,'error'); } finally { showLoading(false); }
+  }
+
+  /* ===== [v3.5] 스케줄 등록/수정 (관리자·직원 공용) =====
+     opts: { schedule(수정 대상), date, propId, mine(내 스케줄에서 연 경우), back(저장 후 돌아갈 모달) }
+     관리자만 담당자를 바꿀 수 있고, 예약 연동 청소는 숙소를 바꿀 수 없다 (예약의 숙소를 따른다). */
+  _canEditSched(s) {
+    const me = store.currentUser;
+    if (!me || !s) return false;
+    if (me.role === 'Admin') return true;
+    return s.staff === me.name || s.createdBy === me.id || store.canEdit(s.propId);
+  }
+  _canDelSched(s) {
+    const me = store.currentUser;
+    if (!me || !s) return false;
+    return me.role === 'Admin' || s.createdBy === me.id || store.canEdit(s.propId);
+  }
+
+  showScheduleForm(opts = {}) {
+    const me = store.currentUser;
+    const isAdmin = me.role === 'Admin';
+    const s = opts.schedule || null;
+    const isEdit = !!s;
+    const back = opts.back || null;
+    if (isEdit && !this._canEditSched(s)) { toast('수정 권한이 없습니다','error'); return; }
+    const props = isAdmin ? store.properties : store.properties.filter(p => store.hasPerm(p.id));
+    if (!props.length) { toast('등록된 매물이 없습니다','error'); return; }
+    const staffName = s?.staff || (isAdmin && !opts.mine ? '' : me.name);
+    const lockStaff = !isAdmin;
+    const bk = s?.bookingId != null ? store.bookings.find(b => String(b.id) === String(s.bookingId)) : null;
+    const linked = isCleaningSched(s) && !!bk;
+    const propSel = s ? +s.propId : (opts.propId || '');
+    const alarm = s?.alarm || [];
+    const inp = 'w-full p-3 border rounded-xl font-bold';
+    openModal(isEdit ? '✏️ 스케줄 수정' : '📅 스케줄 등록', `<form id="sf" class="space-y-3">
+      ${linked ? `<div class="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs font-bold text-purple-700 flex justify-between items-center gap-2 flex-wrap"><span>🔗 예약 연동 청소 · ${esc(bk.guest||'')} (${bk.checkIn}~${bk.checkOut})</span>${store.canEdit(bk.propId) ? `<button type="button" id="sfOpenBk" class="underline">예약 보기</button>` : ''}</div>` : ''}
+      ${!isAdmin && !isEdit ? `<div class="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs font-bold text-purple-700">💡 본인 스케줄 등록 시 관리자에게도 자동 알림 발송</div>` : ''}
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">날짜</label><input type="date" name="date" value="${esc(s?.date || opts.date || todayStr())}" class="${inp} mt-1" required></div>
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">시간</label><input type="time" name="time" value="${esc(s?.time || (linked ? '11:00' : '10:00'))}" class="${inp} mt-1" required></div>
+      </div>
+      <div><label class="text-[10px] font-black text-slate-400 uppercase">담당자</label>${lockStaff
+        ? `<input type="hidden" name="staff" value="${esc(staffName)}"><div class="${inp} mt-1 bg-slate-100 text-slate-500">${esc(staffName)}</div>`
+        : `<select name="staff" class="${inp} mt-1" required>${this._staffOptions(staffName, { blank: '담당자 선택' })}</select>`}</div>
+      <div><label class="text-[10px] font-black text-slate-400 uppercase">숙소</label><select name="propId" class="${inp} mt-1" required ${linked ? 'disabled' : ''}><option value="">숙소 선택</option>${props.map(p=>`<option value="${p.id}" ${+p.id===+propSel?'selected':''}>${esc(p.name)}</option>`).join('')}</select>${linked ? `<input type="hidden" name="propId" value="${+s.propId}">` : ''}</div>
+      <div><label class="text-[10px] font-black text-slate-400 uppercase">업무</label><input name="task" value="${esc(s?.task || opts.task || '')}" placeholder="업무 (예: 퇴실 청소, 점검)" class="${inp} mt-1" required></div>
+      <div class="bg-slate-50 p-3 rounded-xl"><p class="text-xs font-black text-slate-500 uppercase mb-2">🔔 알람 (복수 선택)</p><div class="flex gap-2 flex-wrap">${[5,15,30,60].map(m=>`<label class="flex items-center gap-1 px-3 py-2 bg-white rounded-lg cursor-pointer font-bold text-xs"><input type="checkbox" name="a${m}" ${alarm.includes(m)?'checked':''}> ${m}분 전</label>`).join('')}</div></div>
+      <input name="memo" value="${esc(s?.memo || '')}" placeholder="메모 (선택)" class="${inp}">
+      <div class="flex gap-2">
+        <button class="flex-1 ${isEdit ? 'bg-slate-900' : 'bg-purple-600'} text-white py-4 rounded-xl font-black uppercase">${isEdit ? '수정 저장' : (isAdmin ? '등록 + 담당자 알림 발송' : '등록 (관리자 알림)')}</button>
+        ${isEdit && this._canDelSched(s) ? `<button type="button" id="sfDel" class="px-6 bg-red-50 text-red-500 rounded-xl font-black">삭제</button>` : ''}
+        ${back ? `<button type="button" id="sfBack" class="px-5 bg-slate-100 text-slate-600 rounded-xl font-black">← 뒤로</button>` : ''}
+      </div>
+    </form>`, 'max-w-xl');
+
+    if (back) document.getElementById('sfBack').onclick = () => back();
+    if (isEdit && document.getElementById('sfDel')) document.getElementById('sfDel').onclick = () => this.delScheduleAdm(s.id, back);
+    if (linked && document.getElementById('sfOpenBk')) document.getElementById('sfOpenBk').onclick = () => this.showBookingForm(bk.propId, bk, null, { back });
+
+    document.getElementById('sf').onsubmit = async e => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
-      const alarm = []; [5,15,30,60].forEach(m => { if (d['a'+m]) alarm.push(m); delete d['a'+m]; });
-      d.alarm = alarm;
+      const alarmSel = []; [5,15,30,60].forEach(m => { if (d['a'+m]) alarmSel.push(m); delete d['a'+m]; });
+      d.alarm = alarmSel;
+      if (!d.staff) { toast('담당자를 선택하세요','error'); return; }
       showLoading(true);
-      try { await store.addSchedule(d); toast('등록 + 관리자 알림','success'); closeModal(); await this.go('mySchedule'); }
-      catch(err) { toast('실패','error'); } finally { showLoading(false); }
+      try {
+        if (isEdit) { await store.updateSchedule(s.id, d); toast('스케줄 수정됨','success'); }
+        else { await store.addSchedule(d); toast(isAdmin ? '등록 + 담당자 알림 발송' : '등록 + 관리자 알림','success'); }
+        await this._afterDataChange(back);
+      } catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
     };
+    lucide.createIcons();
   }
-  
-  async delMySched(id) {
-    if (!confirm('삭제?')) return;
-    await store.delSchedule(id);
-    toast('삭제됨','success');
-    await this.go('mySchedule');
+
+  async delScheduleAdm(id, back = null) {
+    const s = store.schedule.find(x => String(x.id) === String(id));
+    if (!confirm(`이 스케줄을 삭제하시겠습니까?${isCleaningSched(s) ? '\n(예약의 청소 담당자 배정도 해제됩니다)' : ''}`)) return;
+    showLoading(true);
+    try { await store.delSchedule(id); toast('삭제됨','success'); await this._afterDataChange(back); }
+    catch(e) { toast('실패: '+e.message,'error'); } finally { showLoading(false); }
+  }
+
+  /* ===== [v3.5] 하루 전체 보기 (달력에서 '+N건' 또는 날짜 클릭) =====
+     scope: 'all' = 관리자 예약 관리(예약 + 모든 스케줄) / 'mine' = 내 스케줄(본인 스케줄만) */
+  showDayDetail(ds, scope = 'all') {
+    if (!isDateStr(ds)) return;
+    const me = store.currentUser;
+    const mine = scope === 'mine';
+    const canSee = pid => { const p = store.prop(pid); return !!p && (me.role === 'Admin' || store.hasPerm(p.id)); };
+    const bks = mine ? [] : store.bookings.filter(b => canSee(b.propId));
+    const items = calendarDayItems(ds, bks, (store.schedule || []).filter(s => mine ? s.staff === me.name : canSee(s.propId)));
+    const groups = [['out', '↖ 퇴실', 'text-red-500'], ['in', '▶ 입실', 'text-blue-600'], ['sched', '🧹 청소·스케줄', 'text-purple-600'], ['stay', '· 숙박중', 'text-slate-500']];
+    const bkRow = b => {
+      const cl = cleaningFor(b.id);
+      const c = bookingColor(b);
+      return `<button type="button" onclick="router._openBookingFromDay(${b.id})" class="w-full text-left bg-white hover:bg-blue-50 border rounded-xl p-3 flex items-center gap-3">
+        <span class="w-2.5 h-10 rounded-full flex-shrink-0" style="background:${c}"></span>
+        <span class="flex-1 min-w-0"><span class="block font-black text-sm truncate">${esc(store.prop(b.propId)?.name || '-')} · ${esc(b.guest || '')}</span>
+        <span class="block text-[11px] text-slate-500 font-bold truncate">${esc(b.platform || '')} · ${b.checkIn} ~ ${b.checkOut} (${daysBetween(b.checkIn, b.checkOut)}박)${cl ? ` · 🧹 ${esc(staffNick(cl.staff))} ${esc(cl.time || '')}` : ''}</span></span>
+        <span class="text-xs font-black text-blue-600 flex-shrink-0">${fmt(bkRev(b))}</span></button>`;
+    };
+    const schRow = s => `<button type="button" onclick="router.onScheduleClick(${s.id})" class="w-full text-left bg-white hover:bg-purple-50 border border-purple-100 rounded-xl p-3 flex items-center gap-3">
+        <span class="text-lg">${isCleaningSched(s) ? '🧹' : '📌'}</span>
+        <span class="flex-1 min-w-0"><span class="block font-black text-sm truncate">${esc(s.time || '')} · ${esc(s.task || '')}</span>
+        <span class="block text-[11px] text-slate-500 font-bold truncate">${esc(s.staff || '')} · ${esc(store.prop(s.propId)?.name || '-')}${s.memo ? ` · ${esc(s.memo)}` : ''}</span></span></button>`;
+    const body = groups.map(([k, label, col]) => {
+      const list = items.filter(it => it.kind === k);
+      if (!list.length) return '';
+      return `<div><p class="text-xs font-black ${col} uppercase mb-2">${label} (${list.length})</p><div class="space-y-2">${list.map(it => it.kind === 'sched' ? schRow(it.s) : bkRow(it.b)).join('')}</div></div>`;
+    }).join('');
+    const addableProps = mine ? [] : store.properties.filter(p => !p.hidden && store.canEdit(p.id));
+    openModal(`📅 ${ds} (${dowKo(ds)}) 일정 전체`, `<div data-cal-ctx="day" data-date="${ds}" data-scope="${scope}" class="space-y-4">
+      <div class="flex items-center justify-between gap-2">
+        <button data-cal-prev onclick="router.showDayDetail('${addDays(ds, -1)}','${scope}')" class="bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl text-xs font-black">‹ 전날</button>
+        <p class="text-xs font-black text-slate-500">총 ${items.length}건 · ⌨ ← → 날짜 이동</p>
+        <button data-cal-next onclick="router.showDayDetail('${addDays(ds, 1)}','${scope}')" class="bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl text-xs font-black">다음날 ›</button>
+      </div>
+      ${body || `<div class="py-10 text-center text-slate-400 font-bold">이 날짜의 일정이 없습니다</div>`}
+      <div class="flex gap-2 flex-wrap pt-3 border-t">
+        ${addableProps.length ? `<select id="dayNewProp" class="flex-1 min-w-[160px] p-3 border rounded-xl font-bold text-sm">${addableProps.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select><button type="button" onclick="router._newBookingOnDay('${ds}')" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">+ 이 날 입실 예약</button>` : ''}
+        <button type="button" onclick="router.showScheduleForm({ date: '${ds}', mine: ${mine}, back: router._modalReturn() })" class="bg-purple-600 text-white px-4 py-3 rounded-xl font-black text-sm">+ 스케줄</button>
+      </div>
+    </div>`, 'max-w-2xl');
+    lucide.createIcons();
+  }
+
+  _openBookingFromDay(id) {
+    const b = store.bookings.find(x => String(x.id) === String(id));
+    if (!b) { toast('예약을 찾을 수 없습니다','error'); return; }
+    if (!store.canEdit(b.propId)) { toast('수정 권한 없음','error'); return; }
+    this.showBookingForm(b.propId, b, null, { back: this._modalReturn() });
+  }
+
+  _newBookingOnDay(ds) {
+    const pid = +document.getElementById('dayNewProp')?.value;
+    if (!pid) { toast('숙소를 선택하세요','error'); return; }
+    this.showBookingForm(pid, null, ds, { back: this._modalReturn() });
   }
 
   // ============ ADMIN ============
@@ -918,7 +1190,7 @@ class Router {
       ['props','building','매물 관리'],
       ['sales','trending-up','매출 관리'],
       ['expenses','credit-card','지출 관리'],
-      ['bookings','calendar','예약 관리'],
+      ['bookings','calendar','예약 관리 + 스케줄'],
       ['stats','bar-chart-3','통계/보고서'],
       ['analytics','line-chart','📈 고급 분석'],
       ['customers','users','고객 관리'],
@@ -928,7 +1200,6 @@ class Router {
       ['backup','database','💾 백업/복원/연동'],
       ['chats','message-square','채팅 관리'],
       ['logs','list-checks','로그 관리'],
-      ['staff','calendar-days','직원 관리'],
       ['etc','package','기타 관리'],
       ['version','git-branch','📦 플랫폼 버전 관리']
     ];
@@ -940,6 +1211,8 @@ class Router {
   async renderAdminTab() {
     const c = document.getElementById('abody');
     if (!c) return;
+    // [v3.5] 직원 관리는 예약 관리로 통합됨 → 예전 알림 링크(tab:'staff')는 스케줄 목록으로
+    if (this.adminTab === 'staff') { this.adminTab = 'bookings'; this.bkMode = 'sched'; this.renderAdminNav(); }
         const fn = {
       main: this.admMain,
       siteConfig: this.admSiteConfig,
@@ -958,7 +1231,6 @@ class Router {
       backup: this.admBackup,
       chats: this.admChats,
       logs: this.admLogs,
-      staff: this.admStaff,
       etc: this.admEtc,
       version: this.admVersion
     }[this.adminTab];
@@ -1163,10 +1435,10 @@ class Router {
     <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
       <p class="text-xs font-black text-blue-700 uppercase mb-3">💰 기준가</p>
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="text-[10px] font-black text-blue-500">판매가 (1박)</label><input type="number" name="price" id="pfPrice" value="${p.price??0}" min="0" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1" required></div>
-        <div><label class="text-[10px] font-black text-blue-500">판매가 (주당)</label><input type="number" name="priceWeek" id="pfPriceWeek" value="${p.priceWeek??''}" min="0" placeholder="주단위(단기임대)" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1"></div>
-        <div><label class="text-[10px] font-black text-slate-500">관리비 (주당)</label><input type="number" name="mgmtFeeWeek" value="${p.mgmtFeeWeek??''}" min="0" class="w-full p-3 border rounded-xl font-black text-slate-600 mt-1"></div>
-        <div><label class="text-[10px] font-black text-slate-500">청소비 (1회)</label><input type="number" name="cleanFee" value="${p.cleanFee??''}" min="0" class="w-full p-3 border rounded-xl font-black text-slate-600 mt-1"></div>
+        <div><label class="text-[10px] font-black text-blue-500">판매가 (1박)</label><input ${moneyAttrs()} name="price" id="pfPrice" value="${moneyVal(p.price??0, true)}" placeholder="0" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1" required></div>
+        <div><label class="text-[10px] font-black text-blue-500">판매가 (주당)</label><input ${moneyAttrs()} name="priceWeek" id="pfPriceWeek" value="${moneyVal(p.priceWeek)}" placeholder="주단위(단기임대)" class="w-full p-3 border rounded-xl font-black text-blue-600 mt-1"></div>
+        <div><label class="text-[10px] font-black text-slate-500">관리비 (주당)</label><input ${moneyAttrs()} name="mgmtFeeWeek" value="${moneyVal(p.mgmtFeeWeek)}" placeholder="0" class="w-full p-3 border rounded-xl font-black text-slate-600 mt-1"></div>
+        <div><label class="text-[10px] font-black text-slate-500">청소비 (1회)</label><input ${moneyAttrs()} name="cleanFee" value="${moneyVal(p.cleanFee)}" placeholder="0" class="w-full p-3 border rounded-xl font-black text-slate-600 mt-1"></div>
       </div>
       <p class="text-[10px] text-blue-600 font-bold mt-2">💡 판매가(주당) 입력 시 <b>1박 = 주당 ÷ 6</b> (1,000원 단위 반올림)으로 자동 계산됩니다. 계산 후 1박 금액을 직접 수정해도 됩니다.</p>
     </div>
@@ -1239,7 +1511,7 @@ class Router {
       pw.addEventListener('input', () => {
         const w = num(pw.value);
         if (!w) return;
-        pn.value = round1000(w / 6);
+        setMoney(pn, round1000(w / 6));
       });
     }
 
@@ -1348,11 +1620,58 @@ class Router {
     c.appendChild(div);
     lucide.createIcons();
   }
-  async delProp(id) {
-    if (!confirm('삭제?')) return;
-    showLoading(true);
-    try { await store.delProp(id); toast('삭제됨','success'); await this.renderAdminTab(); }
-    catch(e) { toast('실패','error'); } finally { showLoading(false); }
+  /* [v3.5] 숙소 삭제: 남아있는 일정(예약·청소 스케줄)이 있으면 경고하고, 함께 지워질 데이터를 보여준 뒤
+     '확인했습니다' 체크 후에만 삭제. 기록을 남기고 싶으면 숨김 처리를 권한다. */
+  delProp(id) {
+    const p = store.prop(id);
+    if (!p) { toast('매물을 찾을 수 없습니다','error'); return; }
+    const today = todayStr();
+    const plan = store.propLinkedPlan([p.id]);
+    const upBk = store.bookings.filter(b => b.propId === p.id && (b.checkOut || '') >= today);
+    const upSch = store.schedule.filter(s => plan.schedule.includes(s.id) && (s.date || '') >= today);
+    const hasPlan = upBk.length + upSch.length > 0;
+    const rows = [
+      ['📅 예약', plan.bookings.length, upBk.length ? `진행중·예정 ${upBk.length}건 포함` : ''],
+      ['🧹 청소·직원 스케줄', plan.schedule.length, upSch.length ? `예정 ${upSch.length}건 포함` : ''],
+      ['💳 지출', plan.expenses.length, ''],
+      ['💬 채팅', plan.chats.length, ''],
+      ['📶 인터넷', plan.internet.length, ''],
+      ['🔁 정기 지출', plan.recurring.length, '']
+    ].filter(r => r[1]);
+    const needAgree = rows.length > 0;
+    openModal('🗑️ 숙소 삭제', `<div class="space-y-4">
+      <p class="text-xl font-black">${esc(p.name)}</p>
+      ${hasPlan ? `<div class="bg-red-50 border-2 border-red-300 rounded-2xl p-4">
+        <p class="font-black text-red-700">⚠️ 이 숙소에 남아있는 일정이 있습니다</p>
+        <p class="text-sm text-red-600 font-bold mt-1">삭제하면 아래 일정이 함께 삭제되며 되돌릴 수 없습니다. 담당자에게는 청소 스케줄 취소 알림이 갑니다.</p>
+      </div>` : ''}
+      ${rows.length ? `<div class="bg-slate-50 rounded-2xl p-4"><p class="text-xs font-black text-slate-500 uppercase mb-2">함께 삭제되는 데이터</p>
+        <div class="space-y-1.5">${rows.map(([k, n, note]) => `<div class="flex justify-between text-sm"><span class="font-bold">${k}</span><span class="font-black">${n}건 ${note ? `<span class="text-red-500 text-xs">(${note})</span>` : ''}</span></div>`).join('')}</div></div>`
+        : `<p class="text-sm font-bold text-slate-500">연결된 예약·지출·스케줄이 없습니다.</p>`}
+      <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
+        <p class="text-xs font-bold text-blue-700 flex-1 min-w-[200px]">💡 기록을 남기려면 삭제 대신 <b>숨김</b>을 사용하세요. 목록에서만 사라지고 예약·지출 데이터는 유지됩니다.</p>
+        <button type="button" id="dpHide" class="bg-white border-2 border-blue-300 text-blue-700 px-4 py-2 rounded-xl font-black text-sm">🙈 숨김 처리</button>
+      </div>
+      ${needAgree ? `<label class="flex items-center gap-2 p-3 bg-red-50 rounded-xl cursor-pointer"><input type="checkbox" id="dpAgree" class="w-4 h-4"><span class="text-sm font-black text-red-700">함께 삭제되는 일정·데이터를 확인했습니다</span></label>` : ''}
+      <div class="flex gap-2">
+        <button type="button" id="dpGo" class="flex-1 bg-red-500 text-white py-3.5 rounded-xl font-black disabled:opacity-40 disabled:cursor-not-allowed" ${needAgree ? 'disabled' : ''}>${needAgree ? '연결 데이터와 함께 삭제' : '삭제'}</button>
+        <button type="button" onclick="closeModal()" class="px-6 bg-slate-100 rounded-xl font-black">취소</button>
+      </div>
+    </div>`, 'max-w-lg');
+    const go = document.getElementById('dpGo');
+    const agree = document.getElementById('dpAgree');
+    if (agree) agree.onchange = () => { go.disabled = !agree.checked; };
+    document.getElementById('dpHide').onclick = async () => {
+      showLoading(true);
+      try { await store.upsertProp({ ...p, hidden: true }); toast('🙈 숨김 처리됨 (데이터 유지)','success'); closeModal(); await this.renderAdminTab(); }
+      catch (e) { toast('실패: ' + e.message,'error'); } finally { showLoading(false); }
+    };
+    go.onclick = async () => {
+      if (agree && !agree.checked) return;
+      showLoading(true);
+      try { await store.delProp(p.id); toast('삭제됨','success'); closeModal(); await this.renderAdminTab(); }
+      catch (e) { toast('실패: ' + e.message,'error'); } finally { showLoading(false); }
+    };
   }
 
   // ===== 지출 관리 (셀 클릭 수정 + 카테고리 드래그) =====
@@ -1366,7 +1685,7 @@ class Router {
     c.innerHTML = `<div class="flex justify-between items-center mb-4 flex-wrap gap-3"><h2 class="text-3xl font-black">💳 지출 관리</h2><div class="flex gap-2 flex-wrap"><div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.expenseMode='integrated';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.expenseMode==='integrated'?'bg-white shadow':'text-slate-500'}">통합</button><button onclick="router.expenseMode='individual';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.expenseMode==='individual'?'bg-white shadow':'text-slate-500'}">개별</button></div><button onclick="router.showCatMgr()" class="bg-white border-2 px-5 py-3 rounded-xl font-black text-sm">📁 카테고리</button><button onclick="router.exportExpensesExcel()" class="bg-green-600 text-white px-5 py-3 rounded-xl font-black text-sm">📥 엑셀↓</button><label class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm cursor-pointer">📤 엑셀↑<input type="file" id="expImport" accept=".xlsx,.xls" class="hidden"></label><button onclick="router.showExpenseForm()" class="bg-red-500 text-white px-5 py-3 rounded-xl font-black text-sm">+ 지출</button></div></div>
     <div class="bg-white p-4 rounded-2xl border mb-4"><p class="text-[10px] font-black text-slate-400 uppercase mb-3">📅 기간 필터</p><div class="flex gap-2 flex-wrap items-center"><select id="expPeriod" class="p-3 border rounded-xl font-bold text-sm"><option value="day" ${f.period==='day'?'selected':''}>일</option><option value="week" ${f.period==='week'?'selected':''}>주</option><option value="month" ${f.period==='month'?'selected':''}>월</option><option value="custom" ${f.period==='custom'?'selected':''}>특정 기간</option></select><input type="date" id="expFrom" value="${f.from}" class="p-3 border rounded-xl font-bold text-sm"><span>~</span><input type="date" id="expTo" value="${f.to}" class="p-3 border rounded-xl font-bold text-sm"><button onclick="router.applyExpFilter()" class="bg-slate-900 text-white px-5 py-3 rounded-xl font-black text-sm">적용</button><button onclick="router.expPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><button onclick="router.expNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button></div></div>
     <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700"><i data-lucide="link" class="w-4 h-4 inline"></i> 🔗 인터넷비 자동연동 · 💡 표 안의 숫자/항목 클릭 시 인라인 편집</div>
-    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl mb-4 flex justify-between items-center"><h3 class="text-2xl font-black">📊 ${titleLabel}</h3><p class="text-3xl font-black text-amber-400">${fmt(this._getFilteredExpenses().reduce((s,e)=>s+e.amount,0))}</p></div>
+    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl mb-4 flex justify-between items-center"><h3 class="text-2xl font-black">📊 ${titleLabel}</h3><p class="text-3xl font-black text-amber-400">${fmt(this._getFilteredExpenses().reduce((s,e)=>s+num(e.amount),0))}</p></div>
     <div id="exp-body"></div>`;
     if (this.expenseMode === 'integrated') this.admExpIntegrated(); else this.admExpIndividual();
     document.getElementById('expImport').onchange = e => { const file = e.target.files[0]; e.target.value = ''; this.importExpensesExcel(file); };
@@ -1382,8 +1701,8 @@ class Router {
     if (period === 'day') from = to = todayStr();
     else if (period === 'week') {
       const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day;
-      from = new Date(d.setDate(diff)).toISOString().split('T')[0];
-      to = new Date(d.setDate(diff+6)).toISOString().split('T')[0];
+      from = ymdLocal(new Date(d.setDate(diff)));
+      to = addDays(from, 6);
     } else if (period === 'month') {
       const fd = new Date(from || todayStr());
       from = `${fd.getFullYear()}-${String(fd.getMonth()+1).padStart(2,'0')}-01`;
@@ -1397,46 +1716,103 @@ class Router {
   expPrevMonth() { const f=this._expFilter; const d=new Date(f.from); d.setMonth(d.getMonth()-1); f.from=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; const last=new Date(d.getFullYear(),d.getMonth()+1,0); f.to=`${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`; f.period='month'; this.renderAdminTab(); }
   expNextMonth() { const f=this._expFilter; const d=new Date(f.from); d.setMonth(d.getMonth()+1); f.from=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; const last=new Date(d.getFullYear(),d.getMonth()+1,0); f.to=`${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`; f.period='month'; this.renderAdminTab(); }
 
+  /* [v3.5] 통합 표 열 구성 = 등록된 카테고리 + 실제 지출에 쓰였지만 목록에 없는 분류(⚠ 미등록).
+     예전에는 등록된 소분류 열만 그려서, 카테고리 목록에 없는 분류(시트 동기화로 들어온 분류, 이름을 바꾸거나
+     지운 분류, 앞뒤 공백 차이 등)로 저장된 지출은 개별 화면에는 보이는데 통합 표에서는 통째로 빠졌다. */
+  _expKey(e) { return { mc: String(e.majorCat ?? '').trim() || '미분류', sc: String(e.category ?? '').trim() || '(미분류)' }; }
+  _expColumns(expenses) {
+    const groups = [];
+    const group = (mc, reg) => { let g = groups.find(x => x.mc === mc); if (!g) { g = { mc, reg, subs: [] }; groups.push(g); } return g; };
+    store.majorCats.forEach(mcRaw => {
+      const g = group(String(mcRaw).trim(), true);
+      (store.subCats[mcRaw] || []).forEach(scRaw => { const sc = String(scRaw).trim(); if (sc && !g.subs.some(x => x.sc === sc)) g.subs.push({ sc, reg: true }); });
+    });
+    expenses.forEach(e => {
+      const { mc, sc } = this._expKey(e);
+      const g = group(mc, false);
+      if (!g.subs.some(x => x.sc === sc)) g.subs.push({ sc, reg: false });
+    });
+    return groups;
+  }
+
   // ⭐ 통합 모드 (셀 클릭 추가/수정)
   admExpIntegrated() {
     const body = document.getElementById('exp-body');
-    const expenses = this._getFilteredExpenses();
-    let html = `<div class="bg-white rounded-2xl border overflow-x-auto"><table class="w-full min-w-[900px]"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">No.</th><th class="px-4 py-3 text-left">숙소</th>${store.majorCats.map(mc=>`<th class="px-4 py-3 text-right" colspan="${(store.subCats[mc]||[]).length+1}" style="background:${mc==='초기투자지출'?'#fef3c7':mc==='고정지출'?'#dbeafe':'#fee2e2'}">${mc}</th>`).join('')}<th class="px-4 py-3 text-right bg-slate-900 text-white">총합</th></tr><tr><th></th><th></th>${store.majorCats.map(mc=>(store.subCats[mc]||[]).map(sc=>`<th class="px-3 py-2 text-right text-[9px]">${sc}${sc==='인터넷비'?' 🔗':''}</th>`).join('')+`<th class="px-3 py-2 text-right text-[9px] font-black">소계</th>`).join('')}<th></th></tr></thead><tbody class="text-xs divide-y">`;
+    const all = this._getFilteredExpenses();
+    // 이미 삭제된 숙소의 지출은 행이 없어 표에 안 나온다 → 위쪽 기간 합계와 차이가 나는 이유를 따로 알려준다
+    const orphans = all.filter(e => !store.prop(e.propId));
+    const expenses = all.filter(e => store.prop(e.propId));
+    const groups = this._expColumns(expenses);
+    const bg = mc => mc==='초기투자지출'?'#fef3c7':mc==='고정지출'?'#dbeafe':mc==='변동지출'?'#fee2e2':'#f1f5f9';
+    const bgSub = mc => mc==='초기투자지출'?'#fef9e7':mc==='고정지출'?'#eff6ff':mc==='변동지출'?'#fef2f2':'#f8fafc';
+    // 숙소별·분류별 합계를 한 번에 계산
+    const sums = {};
+    expenses.forEach(e => { const { mc, sc } = this._expKey(e); const k = `${e.propId}|${mc}|${sc}`; sums[k] = (sums[k] || 0) + num(e.amount); });
+    const unreg = expenses.filter(e => { const { mc, sc } = this._expKey(e); const g = groups.find(x => x.mc === mc); return !g.reg || !g.subs.find(x => x.sc === sc).reg; });
+    const arg = v => esc(JSON.stringify(v));   // onclick 안에 따옴표가 든 분류명도 안전하게
+
+    let html = orphans.length ? `<div class="bg-slate-100 border border-slate-200 rounded-xl p-3 mb-3 text-xs font-bold text-slate-600">ℹ️ 삭제된 숙소에 남아 있던 지출 ${orphans.length}건(${fmt(orphans.reduce((s, e) => s + num(e.amount), 0))})은 표에 나오지 않아 위 기간 합계와 차이가 납니다. <b>백업/복원 › 테스트 데이터 정리</b>에서 정리할 수 있습니다.</div>` : '';
+    html += unreg.length ? `<div class="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 mb-3 flex items-center justify-between gap-2 flex-wrap">
+        <p class="text-xs font-bold text-amber-800">⚠️ 카테고리 목록에 없는 분류로 저장된 지출 <b>${unreg.length}건</b>(${fmt(unreg.reduce((s, e) => s + num(e.amount), 0))})을 '⚠ 미등록' 열로 함께 표시합니다.</p>
+        <button onclick="router.registerUnlistedCats()" class="bg-amber-500 text-white px-3 py-2 rounded-lg text-xs font-black">카테고리에 모두 등록</button>
+      </div>` : '';
+    html += `<div class="bg-white rounded-2xl border overflow-x-auto"><table class="w-full min-w-[900px]"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">No.</th><th class="px-4 py-3 text-left">숙소</th>${groups.map(g=>`<th class="px-4 py-3 text-right" colspan="${g.subs.length+1}" style="background:${bg(g.mc)}">${esc(g.mc)}${g.reg?'':' ⚠'}</th>`).join('')}<th class="px-4 py-3 text-right bg-slate-900 text-white">총합</th></tr><tr><th></th><th></th>${groups.map(g=>g.subs.map(x=>`<th class="px-3 py-2 text-right text-[9px] whitespace-nowrap ${x.reg?'':'bg-amber-100 text-amber-700'}" ${x.reg?'':`title="카테고리 목록에 없는 분류"`}>${esc(x.sc)}${x.sc==='인터넷비'?' 🔗':''}${x.reg?'':' ⚠'}</th>`).join('')+`<th class="px-3 py-2 text-right text-[9px] font-black">소계</th>`).join('')}<th></th></tr></thead><tbody class="text-xs divide-y">`;
+    const colTotals = {};
+    let grand = 0;
     store.properties.forEach((p,idx)=>{
       let total = 0;
-      html += `<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-black">${idx+1}</td><td class="px-4 py-3 font-black whitespace-nowrap">${p.name}</td>`;
-      store.majorCats.forEach(mc=>{
+      html += `<tr class="hover:bg-blue-50/30"><td class="px-4 py-3 font-black">${idx+1}</td><td class="px-4 py-3 font-black whitespace-nowrap">${esc(p.name)}${p.hidden?' <span class="text-[9px] bg-slate-400 text-white px-1 rounded">숨김</span>':''}</td>`;
+      groups.forEach(g=>{
         let mcSum = 0;
-        (store.subCats[mc]||[]).forEach(sc=>{
-          const v = expenses.filter(e=>e.propId===p.id&&e.majorCat===mc&&e.category===sc).reduce((s,e)=>s+e.amount,0);
+        g.subs.forEach(x=>{
+          const v = sums[`${p.id}|${g.mc}|${x.sc}`] || 0;
           mcSum += v;
-          const isLinked = sc==='인터넷비' && v>0;
-          html += `<td class="editable-cell px-3 py-3 text-right font-bold ${isLinked?'text-blue-600':''}" onclick="router.cellClickAddExpense(${p.id},'${mc}','${sc}',${v})" title="클릭하여 ${v?'수정':'추가'}">${v?fmt(v):'-'}</td>`;
+          colTotals[`${g.mc}|${x.sc}`] = (colTotals[`${g.mc}|${x.sc}`] || 0) + v;
+          html += `<td class="editable-cell px-3 py-3 text-right font-bold ${x.sc==='인터넷비'&&v?'text-blue-600':''} ${x.reg?'':'bg-amber-50'}" onclick="router.cellClickAddExpense(${p.id},${arg(g.mc)},${arg(x.sc)},${v})" title="클릭하여 ${v?'수정':'추가'}">${v?fmt(v):'-'}</td>`;
         });
-        html += `<td class="px-3 py-3 text-right font-black" style="background:${mc==='초기투자지출'?'#fef9e7':mc==='고정지출'?'#eff6ff':'#fef2f2'}">${mcSum?fmt(mcSum):'-'}</td>`;
+        colTotals[`${g.mc}|`] = (colTotals[`${g.mc}|`] || 0) + mcSum;
+        html += `<td class="px-3 py-3 text-right font-black" style="background:${bgSub(g.mc)}">${mcSum?fmt(mcSum):'-'}</td>`;
         total += mcSum;
       });
+      grand += total;
       html += `<td class="px-4 py-3 text-right font-black bg-slate-900 text-white">${fmt(total)}</td></tr>`;
     });
-    html += `</tbody></table></div><p class="text-xs text-slate-400 mt-2 font-bold">💡 셀(숫자)을 클릭하면 해당 항목을 바로 추가/수정할 수 있습니다</p>`;
+    html += `</tbody><tfoot class="text-xs font-black bg-slate-100"><tr><td></td><td class="px-4 py-3">합계</td>${groups.map(g=>g.subs.map(x=>`<td class="px-3 py-3 text-right">${colTotals[`${g.mc}|${x.sc}`]?fmt(colTotals[`${g.mc}|${x.sc}`]):'-'}</td>`).join('')+`<td class="px-3 py-3 text-right" style="background:${bgSub(g.mc)}">${colTotals[`${g.mc}|`]?fmt(colTotals[`${g.mc}|`]):'-'}</td>`).join('')}<td class="px-4 py-3 text-right bg-slate-900 text-amber-300">${fmt(grand)}</td></tr></tfoot></table></div><p class="text-xs text-slate-400 mt-2 font-bold">💡 셀(숫자)을 클릭하면 그 항목의 내역을 보고 바로 추가·수정할 수 있습니다</p>`;
     body.innerHTML = html;
   }
-  
+
+  // 미등록 분류를 카테고리 목록에 한 번에 등록 (이후 일반 열로 표시)
+  async registerUnlistedCats() {
+    const pairs = new Map();
+    store.expenses.forEach(e => {
+      if (!store.prop(e.propId)) return;   // 삭제된 숙소의 지출은 표에 없으므로 제외
+      if (!String(e.majorCat ?? '').trim() || !String(e.category ?? '').trim()) return;   // 분류가 빈 건은 등록하지 않음
+      const { mc, sc } = this._expKey(e); pairs.set(`${mc}|${sc}`, [mc, sc]);
+    });
+    showLoading(true);
+    try {
+      let n = 0;
+      for (const [mc, sc] of pairs.values()) if (await store.ensureExpenseCategory(mc, sc)) n++;
+      toast(n ? `${n}개 분류를 카테고리에 등록했습니다` : '등록할 분류가 없습니다', 'success');
+      await this.renderAdminTab();
+    } catch (e) { toast('실패: ' + e.message, 'error'); } finally { showLoading(false); }
+  }
+
   // ⭐ 셀 클릭 → 인라인 입력 모달
   cellClickAddExpense(propId, majorCat, category, currentValue) {
     const p = store.prop(propId);
     const f = this._expFilter;
-    const existing = this._getFilteredExpenses().filter(e => e.propId===propId && e.majorCat===majorCat && e.category===category);
-    openModal(`${currentValue?'✏️':'➕'} ${p.name} - ${category}`, `
+    const existing = this._getFilteredExpenses().filter(e => { const k = this._expKey(e); return e.propId===propId && k.mc===majorCat && k.sc===category; });
+    openModal(`${currentValue?'✏️':'➕'} ${esc(p.name)} - ${esc(category)}`, `
       <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs font-bold text-blue-700">
-        💡 매물: <b>${p.name}</b> · 분류: <b>${majorCat} > ${category}</b><br />
+        💡 매물: <b>${esc(p.name)}</b> · 분류: <b>${esc(majorCat)} > ${esc(category)}</b><br />
         기간: <b>${f.from} ~ ${f.to}</b> · 현재 합계: <b class="text-red-500">${fmt(currentValue)}</b>
       </div>
-      ${existing.length?`<div class="bg-slate-50 p-3 rounded-xl mb-4"><p class="text-xs font-black text-slate-500 uppercase mb-2">📋 기간내 등록된 ${existing.length}건</p><div class="space-y-1 max-h-32 overflow-y-auto">${existing.map(e=>`<div class="flex items-center justify-between bg-white p-2 rounded text-xs"><span>${e.date} · ${e.memo||'-'}</span><div class="flex items-center gap-2"><span class="font-black text-red-500">${fmt(e.amount)}</span><button onclick="router.delExpense(${e.id});closeModal()" class="text-red-400">×</button></div></div>`).join('')}</div></div>`:''}
+      ${existing.length?`<div class="bg-slate-50 p-3 rounded-xl mb-4"><p class="text-xs font-black text-slate-500 uppercase mb-2">📋 기간내 등록된 ${existing.length}건 <span class="normal-case font-bold text-slate-400">(항목 클릭 → 수정)</span></p><div class="space-y-1 max-h-40 overflow-y-auto">${existing.map(e=>`<div class="flex items-center justify-between bg-white p-2 rounded text-xs cursor-pointer hover:bg-blue-50" onclick="router.editExpenseDirect(${e.id})"><span>${e.date} · ${esc(e.memo||'-')} ${e.syncKey?.startsWith('rec_')?'🔁':''}${e.syncKey?.startsWith('net_')?'🔗':''}</span><div class="flex items-center gap-2"><span class="font-black text-red-500">${fmt(e.amount)}</span><button onclick="event.stopPropagation();router.delExpense(${e.id});closeModal()" class="text-red-400">×</button></div></div>`).join('')}</div></div>`:''}
       <form id="cellExp" class="space-y-3">
         <p class="text-xs font-black text-slate-700 uppercase">➕ 신규 등록</p>
         <input type="date" name="date" value="${todayStr()}" class="w-full p-3 border rounded-xl font-bold" required>
-        <input type="number" name="amount" placeholder="금액" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required autofocus>
+        <input ${moneyAttrs()} name="amount" placeholder="금액" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required autofocus>
         <input name="memo" placeholder="메모 (선택)" class="w-full p-3 border rounded-xl font-bold">
         <button class="w-full bg-red-500 text-white py-4 rounded-xl font-black uppercase">등록</button>
       </form>`, 'max-w-xl');
@@ -1456,8 +1832,8 @@ class Router {
     const expenses = this._getFilteredExpenses();
     body.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>{
       const list = expenses.filter(e=>e.propId===p.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-      const total = list.reduce((s,e)=>s+e.amount,0);
-      return `<div class="bg-white p-5 rounded-2xl border"><div class="flex items-center gap-3 mb-4 pb-4 border-b"><img src="${p.image||(p.images?.[p.mainImage||0])||'https://via.placeholder.com/60'}" class="w-12 h-12 rounded-xl object-cover"><div class="flex-1 min-w-0"><p class="font-black truncate">${p.name}</p><p class="text-xs text-red-500 font-black">${fmt(total)}</p></div><button onclick="router.showExpenseForm(${p.id})" class="w-8 h-8 bg-blue-600 text-white rounded-lg text-xs font-black">+</button></div><div class="space-y-2 max-h-64 overflow-y-auto scrollbar">${list.length?list.map(e=>{const linked=e.syncKey?.startsWith('net_');return `<div class="editable-cell p-2 ${linked?'bg-blue-50':'bg-slate-50'} rounded-lg flex items-center gap-2 text-xs" onclick="router.editExpenseDirect(${e.id})"><div class="flex-1 min-w-0"><p class="font-black truncate">${e.category} ${linked?'🔗':''}</p><p class="text-[10px] text-slate-400 font-bold">${e.date} · ${e.memo||'-'}</p></div><span class="text-red-500 font-black">${fmt(e.amount)}</span><button onclick="event.stopPropagation();router.delExpense(${e.id})" class="text-slate-300 hover:text-red-500"><i data-lucide="x" class="w-3 h-3"></i></button></div>`}).join(''):'<p class="text-xs text-slate-400 text-center py-4">기간 내 내역 없음</p>'}</div></div>`;
+      const total = list.reduce((s,e)=>s+num(e.amount),0);
+      return `<div class="bg-white p-5 rounded-2xl border"><div class="flex items-center gap-3 mb-4 pb-4 border-b"><img src="${p.image||(p.images?.[p.mainImage||0])||'https://via.placeholder.com/60'}" class="w-12 h-12 rounded-xl object-cover"><div class="flex-1 min-w-0"><p class="font-black truncate">${esc(p.name)}</p><p class="text-xs text-red-500 font-black">${fmt(total)}</p></div><button onclick="router.showExpenseForm(${p.id})" class="w-8 h-8 bg-blue-600 text-white rounded-lg text-xs font-black">+</button></div><div class="space-y-2 max-h-64 overflow-y-auto scrollbar">${list.length?list.map(e=>{const linked=e.syncKey?.startsWith('net_');const rec=e.syncKey?.startsWith('rec_');return `<div class="editable-cell p-2 ${linked?'bg-blue-50':rec?'bg-purple-50':'bg-slate-50'} rounded-lg flex items-center gap-2 text-xs" onclick="router.editExpenseDirect(${e.id})"><div class="flex-1 min-w-0"><p class="font-black truncate">${esc(e.category)} ${linked?'🔗':''}${rec?'🔁':''}</p><p class="text-[10px] text-slate-400 font-bold">${e.date} · ${esc(e.memo||'-')}</p></div><span class="text-red-500 font-black">${fmt(e.amount)}</span><button onclick="event.stopPropagation();router.delExpense(${e.id})" class="text-slate-300 hover:text-red-500"><i data-lucide="x" class="w-3 h-3"></i></button></div>`}).join(''):'<p class="text-xs text-slate-400 text-center py-4">기간 내 내역 없음</p>'}</div></div>`;
     }).join('')}</div>`;
     lucide.createIcons();
   }
@@ -1474,8 +1850,9 @@ class Router {
         <select name="category" id="eeSc" class="p-3 border rounded-xl font-bold" required></select>
       </div>
       <input type="date" name="date" value="${e.date || todayStr()}" class="w-full p-3 border rounded-xl font-bold" required>
-      <input type="number" name="amount" value="${e.amount}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required>
+      <input ${moneyAttrs()} name="amount" value="${moneyVal(e.amount, true)}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required>
       <input name="memo" value="${esc(e.memo || '')}" placeholder="메모" class="w-full p-3 border rounded-xl font-bold">
+      ${e.syncKey?.startsWith('rec_') ? `<p class="text-[10px] font-bold text-purple-600">🔁 정기 자동이체로 등록된 지출입니다. 이 달 금액만 바뀌고 다음 달부터는 기타 관리의 정기 지출 설정을 따릅니다.</p>` : ''}
       <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">수정</button>
     </form>`, 'max-w-xl');
     this._bindCatSelects('eeMc', 'eeSc', e.majorCat, e.category);
@@ -1495,8 +1872,8 @@ class Router {
   exportExpensesExcel() {
     const expenses = this._getFilteredExpenses();
     const f = this._expFilter;
-    const data = expenses.map(e => ({ '날짜':e.date, '숙소':store.prop(e.propId)?.name||'-', '대분류':e.majorCat, '소분류':e.category, '금액':e.amount, '메모':e.memo||'' }));
-    const ws = XLSX.utils.json_to_sheet(data);
+    const data = expenses.map(e => ({ '날짜':e.date, '숙소':store.prop(e.propId)?.name||'-', '대분류':e.majorCat, '소분류':e.category, '금액':num(e.amount), '메모':e.memo||'' }));
+    const ws = xlsxMoneyCols(XLSX.utils.json_to_sheet(data), ['금액']);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '지출내역');
     XLSX.writeFile(wb, `지출_${f.from}_${f.to}.xlsx`);
@@ -1638,13 +2015,9 @@ class Router {
           const oldName = input.dataset.orig;
           const newName = input.value.trim();
           if (newName && newName !== oldName && !store.majorCats.includes(newName)) {
-            const idx = store.majorCats.indexOf(oldName);
-            store.majorCats[idx] = newName;
-            store.subCats[newName] = store.subCats[oldName];
-            delete store.subCats[oldName];
-            await API.setAll('majorCats', store.majorCats);
-            await API.setAll('subCats', store.subCats);
-            toast('대분류 이름 변경','success');
+            // 지출·정기지출의 대분류도 함께 바꾼다 (목록만 바꾸면 통합 표에서 해당 지출이 사라졌다)
+            const n = await store.renameMajorCat(oldName, newName);
+            toast(`대분류 이름 변경 (관련 지출 ${n}건 동기화)`,'success');
             this.showCatMgr();
             await this.renderAdminTab();
           }
@@ -1669,21 +2042,25 @@ class Router {
     lucide.createIcons();
   }
   async addMajorCat(e){e.preventDefault();const v=e.target.m.value.trim();if(v&&!store.majorCats.includes(v)){store.majorCats.push(v);store.subCats[v]=[];await API.setAll('majorCats',store.majorCats);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}}
-  async delMajorCat(i,mc){if(!confirm('삭제? 관련 지출도 영향받습니다.'))return;store.majorCats.splice(i,1);delete store.subCats[mc];await API.setAll('majorCats',store.majorCats);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}
+  async delMajorCat(i,mc){const n=store.expenses.filter(e=>String(e.majorCat||'').trim()===mc).length;if(!confirm(`대분류 '${mc}'를 삭제하시겠습니까?${n?`\n이 대분류를 쓰는 지출 ${n}건은 삭제되지 않고 지출 통합 표에 '⚠ 미등록' 열로 표시됩니다.`:''}`))return;store.majorCats.splice(i,1);delete store.subCats[mc];await API.setAll('majorCats',store.majorCats);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}
   async addSubCat(e,mc){e.preventDefault();const v=e.target.s.value.trim();if(v){store.subCats[mc]=store.subCats[mc]||[];store.subCats[mc].push(v);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}}
-  async delSubCat(mc,j){if(!confirm('삭제?'))return;store.subCats[mc].splice(j,1);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}
+  async delSubCat(mc,j){const sc=store.subCats[mc][j];const n=store.expenses.filter(e=>String(e.majorCat||'').trim()===mc&&String(e.category||'').trim()===sc).length;if(!confirm(`소분류 '${sc}'를 삭제하시겠습니까?${n?`\n이 분류를 쓰는 지출 ${n}건은 삭제되지 않고 지출 통합 표에 '⚠ 미등록' 열로 표시됩니다.`:''}`))return;store.subCats[mc].splice(j,1);await API.setAll('subCats',store.subCats);this.showCatMgr();await this.renderAdminTab()}
 
   // 대분류 → 소분류 연동 (인라인 onchange 속성 파손 문제 해결)
   _bindCatSelects(majorId, subId, selMajor = null, selSub = null) {
     const mc = document.getElementById(majorId);
     const sc = document.getElementById(subId);
     if (!mc || !sc) return;
-    if (selMajor && store.majorCats.includes(selMajor)) mc.value = selMajor;
+    // 수정 대상의 분류가 카테고리 목록에 없어도 선택지에 넣어 둔다 (금액만 고쳤는데 분류가 바뀌는 일 방지)
+    if (selMajor && !store.majorCats.includes(selMajor)) mc.insertAdjacentHTML('beforeend', `<option value="${esc(selMajor)}">${esc(selMajor)} (미등록)</option>`);
+    if (selMajor) mc.value = selMajor;
+    const origMajor = mc.value;
     const fill = keep => {
-      const subs = store.subCats[mc.value] || [];
-      sc.innerHTML = subs.length
+      const subs = [...(store.subCats[mc.value] || [])];
+      const extra = keep && mc.value === origMajor && !subs.includes(keep) ? `<option value="${esc(keep)}" selected>${esc(keep)} (미등록)</option>` : '';
+      sc.innerHTML = extra + (subs.length || extra
         ? subs.map(x => `<option value="${esc(x)}" ${keep === x ? 'selected' : ''}>${esc(x)}</option>`).join('')
-        : '<option value="">— 소분류 없음 (📁 카테고리에서 추가) —</option>';
+        : '<option value="">— 소분류 없음 (📁 카테고리에서 추가) —</option>');
     };
     fill(selSub);
     mc.addEventListener('change', () => fill(null));
@@ -1699,7 +2076,7 @@ class Router {
         <select name="category" id="scSel" class="p-3 border rounded-xl font-bold" required></select>
       </div>
       <input type="date" name="date" value="${todayStr()}" class="w-full p-3 border rounded-xl font-bold" required>
-      <input type="number" name="amount" placeholder="금액" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required>
+      <input ${moneyAttrs()} name="amount" placeholder="금액" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl" required>
       <input name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold">
       <button class="w-full bg-red-500 text-white py-4 rounded-xl font-black uppercase">지출 등록</button>
     </form>`, 'max-w-xl');
@@ -1721,31 +2098,86 @@ class Router {
     catch(e) { toast('실패','error'); } finally { showLoading(false); }
   }
 
-  // ===== 예약 관리 (월 자유 이동) =====
+  // ===== 예약 관리 (예약 + 청소·직원 스케줄 통합, 월 자유 이동) =====
   admBookings(c) {
     const cur = this._bkDate;
     const year = cur.getFullYear(), month = cur.getMonth();
-    c.innerHTML = `<div class="flex justify-between items-center mb-6 flex-wrap gap-3"><h2 class="text-3xl font-black">📅 예약 관리</h2><div class="flex gap-2 items-center flex-wrap"><button onclick="router.bkPrevMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><h3 class="text-xl font-black px-4">${year}년 ${month+1}월</h3><button onclick="router.bkNextMonth()" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button onclick="router.bkToday()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button><div class="bg-slate-100 rounded-xl p-1 flex"><button onclick="router.bkMode='month';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='month'?'bg-white shadow':'text-slate-500'}">월별</button><button onclick="router.bkMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${this.bkMode==='list'?'bg-white shadow':'text-slate-500'}">개별</button></div></div></div><div id="bk-body"></div>`;
-    if (this.bkMode === 'list') {
-      document.getElementById('bk-body').innerHTML = `<div class="mb-3">${calendarLegend()}</div><div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>`<div class="bg-white p-4 rounded-2xl border"><h4 class="font-black mb-3">${esc(p.name)}</h4>${buildCalendar(year, month, p.id, 'router.onCalendarClick')}</div>`).join('')}</div>`;
+    const ym = `${year}-${String(month+1).padStart(2,'0')}`;
+    const mode = ['month', 'list', 'sched'].includes(this.bkMode) ? this.bkMode : 'month';
+    const show = this._bkShow || (this._bkShow = { bk: true, sch: true });
+    const monthSched = (store.schedule || []).filter(s => toDateStr(s.date).startsWith(ym))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+    const tab = (k, label) => `<button onclick="router.bkMode='${k}';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${mode===k?'bg-white shadow':'text-slate-500'}">${label}</button>`;
+    c.innerHTML = `<div class="flex justify-between items-center mb-4 flex-wrap gap-3">
+      <div><h2 class="text-3xl font-black">📅 예약 관리</h2><p class="text-slate-500 text-sm mt-1">예약 + 청소·직원 스케줄 통합 · ⌨ ← → 월 이동</p></div>
+      <div class="flex gap-2 items-center flex-wrap">
+        <button data-cal-prev onclick="router.bkPrevMonth()" title="이전 달 (←)" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+        <h3 class="text-xl font-black px-3">${year}년 ${month+1}월</h3>
+        <button data-cal-next onclick="router.bkNextMonth()" title="다음 달 (→)" class="bg-slate-100 px-3 py-3 rounded-xl"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+        <button onclick="router.bkToday()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button>
+        <div class="bg-slate-100 rounded-xl p-1 flex">${tab('month','월별')}${tab('list','숙소별')}${tab('sched','스케줄 목록')}</div>
+        <button onclick="router.showScheduleForm({})" class="bg-purple-600 text-white px-4 py-3 rounded-xl font-black text-sm">+ 스케줄</button>
+      </div>
+    </div><div id="bk-body"></div>`;
+    const body = document.getElementById('bk-body');
+
+    if (mode === 'list') {
+      body.innerHTML = `<div class="mb-3">${calendarLegend('bar')}</div><div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${store.properties.map(p=>`<div class="bg-white p-4 rounded-2xl border"><h4 class="font-black mb-3 flex items-center gap-2">${esc(p.name)}${p.hidden?'<span class="text-[9px] bg-slate-400 text-white px-1.5 py-0.5 rounded">숨김</span>':''}</h4>${buildCalendar(year, month, p.id, 'router.onCalendarClick')}</div>`).join('')}</div>`;
+    } else if (mode === 'sched') {
+      body.innerHTML = this._bkSchedList(year, month, monthSched);
     } else {
-      let html = `<div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4 flex-wrap gap-2"><h3 class="text-xl font-black">${year}년 ${month+1}월 전체 예약</h3>${calendarLegend()}</div>`;
+      const bkList = show.bk ? store.bookings.filter(b => store.prop(b.propId)) : [];
+      const schList = show.sch ? (store.schedule || []).filter(s => store.prop(s.propId)) : [];
+      const chk = (k, label) => `<label class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 rounded-lg cursor-pointer text-xs font-black"><input type="checkbox" ${show[k]?'checked':''} onchange="router._bkShow.${k}=this.checked;router.renderAdminTab()"> ${label}</label>`;
       const first = new Date(year, month, 1);
       const days = new Date(year, month+1, 0).getDate();
-      const startDow = first.getDay();
-      html += `<div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">${['일','월','화','수','목','금','토'].map(d=>`<div class="text-center py-2">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">`;
-      for (let i=0; i<startDow; i++) html += `<div class="min-h-[120px] bg-slate-50/50 rounded-lg"></div>`;
+      const today = todayStr();
+      let html = `<div class="bg-white p-4 sm:p-6 rounded-2xl border">
+        <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+          <div class="flex items-center gap-2 flex-wrap"><h3 class="text-xl font-black mr-2">${year}년 ${month+1}월 전체</h3>${chk('bk','예약')}${chk('sch','🧹 청소·스케줄')}</div>
+          ${calendarLegend('badge')}
+        </div>
+        <div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">${['일','월','화','수','목','금','토'].map(d=>`<div class="text-center py-2">${d}</div>`).join('')}</div><div class="grid grid-cols-7 gap-1">`;
+      for (let i=0; i<first.getDay(); i++) html += `<div class="min-h-[120px] bg-slate-50/50 rounded-lg"></div>`;
       for (let d=1; d<=days; d++) {
-        const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        html += `<div class="min-h-[120px] border rounded-lg p-1.5 ${ds===todayStr()?'ring-2 ring-blue-500':''}"><div class="text-xs font-black">${d}</div>${calendarDayBadges(ds, store.bookings, 'router.onCalendarClick')}</div>`;
+        const ds = `${ym}-${String(d).padStart(2,'0')}`;
+        const n = calendarDayItems(ds, bkList, schList).length;
+        html += `<div class="cal-mday min-h-[120px] border rounded-lg p-1.5 min-w-0 ${ds===today?'ring-2 ring-blue-500':''}" onclick="router.showDayDetail('${ds}')" title="${ds} 전체 보기">
+          <div class="flex justify-between items-center"><span class="text-xs font-black">${d}</span>${n?`<span class="text-[9px] font-black text-slate-400">${n}건</span>`:''}</div>
+          ${calendarDayBadges(ds, bkList, 'router.onCalendarClick', 4, { schedules: schList, onMore: 'router.showDayDetail' })}
+        </div>`;
       }
       html += `</div></div>`;
-      document.getElementById('bk-body').innerHTML = html;
+      body.innerHTML = html;
     }
     lucide.createIcons();
   }
-  bkPrevMonth() { this._bkDate.setMonth(this._bkDate.getMonth()-1); this.renderAdminTab(); }
-  bkNextMonth() { this._bkDate.setMonth(this._bkDate.getMonth()+1); this.renderAdminTab(); }
+
+  // 스케줄 목록 (구 '직원 관리' 리스트) — 행 클릭 → 수정
+  _bkSchedList(year, month, monthSched) {
+    const nonAdmin = (store.users || []).filter(u => u.role !== 'Admin');
+    const rows = monthSched.map(s => `<tr class="hover:bg-blue-50/30 cursor-pointer" onclick="router.onScheduleClick(${s.id})">
+        <td class="px-4 py-3 font-black whitespace-nowrap">${esc(s.date)} ${esc(s.time||'')}</td>
+        <td class="px-4 py-3">${esc(s.staff||'')}</td>
+        <td class="px-4 py-3 text-xs">${esc(store.prop(s.propId)?.name || '-')}</td>
+        <td class="px-4 py-3">${isCleaningSched(s) ? '🧹 ' : ''}${esc(s.task||'')}${isCleaningSched(s) ? ' <span class="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-black">예약 연동</span>' : ''}</td>
+        <td class="px-4 py-3 text-xs">${(s.alarm || []).map(a => a + '분').join(', ') || '없음'}</td>
+        <td class="px-4 py-3 text-xs text-slate-500">${esc(s.memo || '-')}</td>
+        <td class="px-4 py-3 text-center whitespace-nowrap"><button onclick="event.stopPropagation();router.onScheduleClick(${s.id})" class="text-blue-500 hover:bg-blue-50 rounded p-1" title="수정"><i data-lucide="edit-3" class="w-4 h-4"></i></button><button onclick="event.stopPropagation();router.delScheduleAdm(${s.id})" class="text-red-500 hover:bg-red-50 rounded p-1" title="삭제"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>
+      </tr>`).join('');
+    return `<div class="bg-white rounded-2xl border overflow-hidden mb-6">
+        <div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">📋 ${year}년 ${month + 1}월 스케줄 (${monthSched.length}건)</h3></div>
+        ${monthSched.length ? `<div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">일시</th><th class="px-4 py-3 text-left">담당자</th><th class="px-4 py-3 text-left">숙소</th><th class="px-4 py-3 text-left">업무</th><th class="px-4 py-3 text-left">알람</th><th class="px-4 py-3 text-left">메모</th><th class="px-4 py-3 text-center">관리</th></tr></thead><tbody class="text-sm divide-y">${rows}</tbody></table></div>`
+          : UI.Empty('calendar-x', '이번 달 스케줄이 없습니다', '+ 스케줄 버튼 또는 예약 등록 시 청소 담당자 배정으로 추가됩니다')}
+      </div>
+      <div class="bg-white rounded-2xl border overflow-hidden">
+        <div class="p-4 border-b bg-slate-50"><h3 class="font-black text-sm uppercase">👥 직원 현황 (${nonAdmin.length}명)</h3></div>
+        ${nonAdmin.length ? `<div class="overflow-x-auto"><table class="w-full"><thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase"><tr><th class="px-4 py-3 text-left">태그</th><th class="px-4 py-3 text-left">이름</th><th class="px-4 py-3 text-left">역할</th><th class="px-4 py-3 text-left">연락처</th><th class="px-4 py-3 text-left">이번 달 스케줄</th><th class="px-4 py-3 text-left">비고</th></tr></thead><tbody class="text-sm divide-y">${nonAdmin.map(u => `<tr class="hover:bg-blue-50/30"><td class="px-4 py-3">${mgrTag(u.id)}</td><td class="px-4 py-3 font-black">${esc(u.name)}</td><td class="px-4 py-3 text-xs font-black">${roleLabel(u.role)}</td><td class="px-4 py-3 text-xs font-mono">${esc(u.contact || '-')}</td><td class="px-4 py-3 text-xs font-bold text-purple-600">${monthSched.filter(s => s.staff === u.name).length}건</td><td class="px-4 py-3 text-xs text-slate-500">${esc(u.memo || '-')}</td></tr>`).join('')}</tbody></table></div>`
+          : UI.Empty('users', '직원이 없습니다', '이용자/권한 메뉴에서 직원을 추가하세요')}
+      </div>`;
+  }
+  bkPrevMonth() { this._bkDate.setMonth(this._bkDate.getMonth()-1, 1); this.renderAdminTab(); }
+  bkNextMonth() { this._bkDate.setMonth(this._bkDate.getMonth()+1, 1); this.renderAdminTab(); }
   bkToday() { this._bkDate = new Date(); this.renderAdminTab(); }
   // ===== 🎨 메인화면 관리 (사이트 설정) =====
   admSiteConfig(c) {
@@ -1892,7 +2324,7 @@ class Router {
   }
   
   actOnInsight(action, propId) {
-    const map = {pricing:'smartPricing', cost:'expenses', marketing:'sales', payment:'bookings', schedule:'staff', stats:'stats', props:'props', chats:'chats', customers:'customers'};
+    const map = {pricing:'smartPricing', cost:'expenses', marketing:'sales', payment:'bookings', schedule:'bookings', stats:'stats', props:'props', chats:'chats', customers:'customers'};
     if (map[action]) { 
       this.adminTab = map[action]; 
       this.renderAdminNav(); 
@@ -2126,8 +2558,8 @@ class Router {
     if (period === 'day') from = to = todayStr();
     else if (period === 'week') {
       const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day;
-      from = new Date(d.setDate(diff)).toISOString().split('T')[0];
-      to = new Date(d.setDate(diff+6)).toISOString().split('T')[0];
+      from = ymdLocal(new Date(d.setDate(diff)));
+      to = addDays(from, 6);
     } else if (period === 'month') {
       const fd = new Date(from || todayStr());
       from = `${fd.getFullYear()}-${String(fd.getMonth()+1).padStart(2,'0')}-01`;
@@ -2553,7 +2985,7 @@ class Router {
   }
   
   actOnInsight(action, propId) {
-    const map = {pricing:'smartPricing', cost:'expenses', marketing:'sales', payment:'bookings', schedule:'staff', stats:'stats', props:'props', chats:'chats', customers:'customers'};
+    const map = {pricing:'smartPricing', cost:'expenses', marketing:'sales', payment:'bookings', schedule:'bookings', stats:'stats', props:'props', chats:'chats', customers:'customers'};
     if (map[action]) { 
       this.adminTab = map[action]; 
       this.renderAdminNav(); 
@@ -2812,8 +3244,8 @@ class Router {
     if (period === 'day') from = to = todayStr();
     else if (period === 'week') {
       const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day;
-      from = new Date(d.setDate(diff)).toISOString().split('T')[0];
-      to = new Date(d.setDate(diff+6)).toISOString().split('T')[0];
+      from = ymdLocal(new Date(d.setDate(diff)));
+      to = addDays(from, 6);
     } else if (period === 'month') {
       const fd = new Date(from || todayStr());
       from = `${fd.getFullYear()}-${String(fd.getMonth()+1).padStart(2,'0')}-01`;
@@ -2929,7 +3361,7 @@ class Router {
       '숙소': store.prop(e.propId)?.name || '-',
       '대분류': e.majorCat,
       '소분류': e.category,
-      '금액': e.amount,
+      '금액': num(e.amount),
       '메모': e.memo || ''
     }));
     
@@ -2964,7 +3396,7 @@ class Router {
             contact: row['연락처'] || '',
             platform: row['플랫폼'] || '직접예약',
             people: +row['인원'] || 2,
-            price: +row['가격'] || 0,
+            price: num(row['가격']),
             memo: row['메모'] || '',
             nationality: '한국'
           });
@@ -2983,7 +3415,7 @@ class Router {
             date: row['날짜'] || todayStr(),
             majorCat: row['대분류'] || '변동지출',
             category: row['소분류'] || '기타',
-            amount: +row['금액'] || 0,
+            amount: num(row['금액']),
             memo: row['메모'] || ''
           });
           added++;
@@ -3139,286 +3571,154 @@ class Router {
     this.showPlatformMgr();
     await this.renderAdminTab();
   }
-  // ===== 직원 관리 =====
-    admStaff(c) {
-    const cur = this._staffDate || new Date();
-    this._staffDate = cur;
-    const year = cur.getFullYear();
-    const month = cur.getMonth();
-    const allSched = (store.schedule || []).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    const monthSched = allSched.filter(s => toDateStr(s.date).startsWith(`${year}-${String(month + 1).padStart(2, '0')}`));
-    const staffMode = this.staffMode || 'cal';
-    const nonAdminUsers = (store.users || []).filter(u => u.role !== 'Admin');
-    
-    c.innerHTML = `
-      <div class="flex justify-between items-center mb-6 flex-wrap gap-3">
-        <div>
-          <h2 class="text-3xl font-black">👷 직원 관리</h2>
-          <p class="text-slate-500 mt-1">${year}년 ${month + 1}월 · ${monthSched.length}건 스케줄</p>
-        </div>
-        <div class="flex gap-2 items-center flex-wrap">
-          <button onclick="router._staffDate.setMonth(router._staffDate.getMonth()-1);router.renderAdminTab()" class="bg-slate-100 px-3 py-3 rounded-xl">
-            <i data-lucide="chevron-left" class="w-4 h-4"></i>
-          </button>
-          <span class="font-black text-sm px-2">${year}.${month + 1}</span>
-          <button onclick="router._staffDate.setMonth(router._staffDate.getMonth()+1);router.renderAdminTab()" class="bg-slate-100 px-3 py-3 rounded-xl">
-            <i data-lucide="chevron-right" class="w-4 h-4"></i>
-          </button>
-          <button onclick="router._staffDate=new Date();router.renderAdminTab()" class="bg-blue-600 text-white px-4 py-3 rounded-xl font-black text-sm">오늘</button>
-          <div class="bg-slate-100 rounded-xl p-1 flex">
-            <button onclick="router.staffMode='cal';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${staffMode !== 'list' ? 'bg-white shadow' : 'text-slate-500'}">캘린더</button>
-            <button onclick="router.staffMode='list';router.renderAdminTab()" class="px-4 py-2 rounded-lg font-black text-sm ${staffMode === 'list' ? 'bg-white shadow' : 'text-slate-500'}">리스트</button>
-          </div>
-          <button onclick="router.showScheduleForm()" class="bg-blue-600 text-white px-5 py-3 rounded-xl font-black text-sm">+ 스케줄</button>
-        </div>
-      </div>
-    `;
-    
-    if (staffMode === 'list') {
-      c.innerHTML += `
-        <div class="bg-white rounded-2xl border overflow-hidden mb-6">
-          <div class="p-4 border-b bg-slate-50">
-            <h3 class="font-black text-sm uppercase">👥 직원 리스트 (${nonAdminUsers.length}명)</h3>
-          </div>
-          ${nonAdminUsers.length === 0 ? UI.Empty('users','직원이 없습니다','이용자/권한 메뉴에서 직원을 추가하세요') : `
-            <div class="overflow-x-auto">
-              <table class="w-full">
-                <thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase">
-                  <tr>
-                    <th class="px-4 py-3 text-left">No.</th>
-                    <th class="px-4 py-3 text-left">태그</th>
-                    <th class="px-4 py-3 text-left">이름</th>
-                    <th class="px-4 py-3 text-left">역할</th>
-                    <th class="px-4 py-3 text-left">연락처</th>
-                    <th class="px-4 py-3 text-left">이메일</th>
-                    <th class="px-4 py-3 text-left">담당 매물</th>
-                    <th class="px-4 py-3 text-left">비고</th>
-                  </tr>
-                </thead>
-                <tbody class="text-sm divide-y">
-                  ${nonAdminUsers.map((u, i) => `
-                    <tr class="hover:bg-blue-50/30">
-                      <td class="px-4 py-3 font-black">${i + 1}</td>
-                      <td class="px-4 py-3">${mgrTag(u.id)}</td>
-                      <td class="px-4 py-3 font-black">${u.name}</td>
-                      <td class="px-4 py-3 text-xs font-black">${u.role}</td>
-                      <td class="px-4 py-3 text-xs font-mono">${u.contact || '-'}</td>
-                      <td class="px-4 py-3 text-xs">${u.email || '-'}</td>
-                      <td class="px-4 py-3 text-xs font-bold text-blue-600">${(u.permissions || []).length}개</td>
-                      <td class="px-4 py-3 text-xs text-slate-500">${u.memo || '-'}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          `}
-        </div>
-        
-        <div class="bg-white rounded-2xl border overflow-hidden">
-          <div class="p-4 border-b bg-slate-50">
-            <h3 class="font-black text-sm uppercase">📋 ${year}년 ${month + 1}월 스케줄 (${monthSched.length}건)</h3>
-          </div>
-          ${monthSched.length === 0 ? UI.Empty('calendar-x','이번 달 스케줄이 없습니다','+ 스케줄 버튼으로 등록하세요') : `
-            <div class="overflow-x-auto">
-              <table class="w-full">
-                <thead class="bg-slate-50 text-[10px] text-slate-400 font-black uppercase">
-                  <tr>
-                    <th class="px-4 py-3 text-left">일시</th>
-                    <th class="px-4 py-3 text-left">담당자</th>
-                    <th class="px-4 py-3 text-left">숙소</th>
-                    <th class="px-4 py-3 text-left">업무</th>
-                    <th class="px-4 py-3 text-left">알람</th>
-                    <th class="px-4 py-3 text-left">메모</th>
-                    <th class="px-4 py-3 text-center">관리</th>
-                  </tr>
-                </thead>
-                <tbody class="text-sm divide-y">
-                  ${monthSched.map(s => `
-                    <tr class="hover:bg-blue-50/30">
-                      <td class="px-4 py-3 font-black">${s.date} ${s.time}</td>
-                      <td class="px-4 py-3">${s.staff}</td>
-                      <td class="px-4 py-3 text-xs">${store.prop(s.propId)?.name || '-'}</td>
-                      <td class="px-4 py-3">${s.task}</td>
-                      <td class="px-4 py-3 text-xs">${(s.alarm || []).map(a => a + '분').join(', ') || '없음'}</td>
-                      <td class="px-4 py-3 text-xs text-slate-500">${s.memo || '-'}</td>
-                      <td class="px-4 py-3 text-center">
-                        <button onclick="router.delScheduleAdm(${s.id})" class="text-red-500 hover:bg-red-50 rounded p-1">
-                          <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          `}
-        </div>
-      `;
-    } else {
-      // 캘린더 모드
-      const first = new Date(year, month, 1);
-      const startDow = first.getDay();
-      const days = new Date(year, month + 1, 0).getDate();
-      let html = `
-        <div class="bg-white p-6 rounded-2xl border">
-          <h3 class="text-xl font-black mb-4">${year}년 ${month + 1}월 직원 스케줄 캘린더</h3>
-          <div class="grid grid-cols-7 gap-1 text-[10px] font-black text-slate-400 uppercase mb-2">
-            ${['일', '월', '화', '수', '목', '금', '토'].map(d => `<div class="text-center py-2">${d}</div>`).join('')}
-          </div>
-          <div class="grid grid-cols-7 gap-1">
-      `;
-      for (let i = 0; i < startDow; i++) {
-        html += `<div class="min-h-[110px] bg-slate-50/50 rounded-lg"></div>`;
-      }
-      for (let d = 1; d <= days; d++) {
-        const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const sch = monthSched.filter(s => s.date === ds);
-        html += `
-          <div class="min-h-[110px] border rounded-lg p-1.5 ${ds === todayStr() ? 'ring-2 ring-blue-500' : ''}">
-            <div class="text-xs font-black">${d}</div>
-            ${sch.slice(0, 3).map(s => `
-              <div class="text-[9px] font-bold truncate px-1 py-0.5 rounded mt-0.5 bg-purple-100 text-purple-700">
-                ${s.time} ${(s.staff || '').slice(0, 3)}
-              </div>
-            `).join('')}
-            ${sch.length > 3 ? `<div class="text-[8px] text-slate-400 mt-0.5">+${sch.length - 3}건</div>` : ''}
-          </div>
-        `;
-      }
-      html += `</div></div>`;
-      c.innerHTML += html;
-    }
-    
-    lucide.createIcons();
-  }
-
-  showScheduleForm() {
-    if (!store.users || !store.users.filter(u => u.role !== 'Admin').length) {
-      toast('등록된 직원이 없습니다. 이용자/권한 메뉴에서 직원을 먼저 추가하세요.', 'error');
-      return;
-    }
-    if (!store.properties || !store.properties.length) {
-      toast('등록된 매물이 없습니다.', 'error');
-      return;
-    }
-    
-    openModal('📅 스케줄 등록', `
-      <form id="sf" class="space-y-4">
-        <div class="grid grid-cols-2 gap-3">
-          <input type="date" name="date" value="${todayStr()}" class="p-3 border rounded-xl font-bold" required>
-          <input type="time" name="time" value="10:00" class="p-3 border rounded-xl font-bold" required>
-        </div>
-        <select name="staff" class="w-full p-3 border rounded-xl font-bold" required>
-          <option value="">담당자 선택</option>
-          ${store.users.filter(u => u.role !== 'Admin').map(u => `<option>${u.name}</option>`).join('')}
-        </select>
-        <select name="propId" class="w-full p-3 border rounded-xl font-bold" required>
-          <option value="">숙소 선택</option>
-          ${store.properties.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
-        </select>
-        <input name="task" placeholder="업무 내용 (예: 퇴실 청소)" class="w-full p-3 border rounded-xl font-bold" required>
-        <div class="bg-slate-50 p-4 rounded-xl">
-          <p class="text-xs font-black text-slate-500 uppercase mb-2">🔔 알람 (복수 선택)</p>
-          <div class="flex gap-2 flex-wrap">
-            ${[5, 15, 30, 60].map(m => `
-              <label class="flex items-center gap-1 px-3 py-2 bg-white rounded-lg cursor-pointer font-bold text-xs">
-                <input type="checkbox" name="a${m}"> ${m}분 전
-              </label>
-            `).join('')}
-          </div>
-        </div>
-        <input name="memo" placeholder="메모 (선택)" class="w-full p-3 border rounded-xl font-bold">
-        <button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">등록 + 담당자 알림 발송</button>
-      </form>
-    `, 'max-w-xl');
-    
-    document.getElementById('sf').onsubmit = async e => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const d = {};
-      fd.forEach((v, k) => { d[k] = v; });
-      const alarm = [];
-      [5, 15, 30, 60].forEach(m => {
-        if (d['a' + m]) alarm.push(m);
-        delete d['a' + m];
-      });
-      d.alarm = alarm;
-      
-      showLoading(true);
-      try {
-        await store.addSchedule(d);
-        toast('등록 + 담당자 알림 발송 완료', 'success');
-        closeModal();
-        await this.renderAdminTab();
-      } catch(err) {
-        toast('실패: ' + err.message, 'error');
-      } finally {
-        showLoading(false);
-      }
-    };
-    lucide.createIcons();
-  }
-
-  async delScheduleAdm(id) {
-    if (!confirm('이 스케줄을 삭제하시겠습니까?')) return;
-    showLoading(true);
-    try {
-      await store.delSchedule(id);
-      toast('삭제됨', 'success');
-      await this.renderAdminTab();
-    } catch(e) {
-      toast('실패: ' + e.message, 'error');
-    } finally {
-      showLoading(false);
-    }
-  }
-  
-  showScheduleForm() {
-    openModal('📅 스케줄 등록', `<form id="sf" class="space-y-4"><div class="grid grid-cols-2 gap-3"><input type="date" name="date" value="${todayStr()}" class="p-3 border rounded-xl font-bold" required><input type="time" name="time" value="10:00" class="p-3 border rounded-xl font-bold" required></div><select name="staff" class="w-full p-3 border rounded-xl font-bold" required>${store.users.filter(u=>u.role!=='Admin').map(u=>`<option>${u.name}</option>`).join('')}</select><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select><input name="task" placeholder="업무 (예: 퇴실청소)" class="w-full p-3 border rounded-xl font-bold" required><div class="bg-slate-50 p-4 rounded-xl"><p class="text-xs font-black text-slate-500 uppercase mb-2">🔔 알람</p><div class="flex gap-2">${[5,15,30,60].map(m=>`<label class="flex items-center gap-1 px-3 py-2 bg-white rounded-lg cursor-pointer font-bold text-xs"><input type="checkbox" name="a${m}"> ${m}분</label>`).join('')}</div></div><input name="memo" placeholder="메모" class="w-full p-3 border rounded-xl font-bold"><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">등록 & 알림 발송</button></form>`, 'max-w-xl');
-    document.getElementById('sf').onsubmit = async e => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const d = {}; fd.forEach((v,k)=>{ d[k]=v; });
-      const alarm = []; [5,15,30,60].forEach(m => { if (d['a'+m]) alarm.push(m); delete d['a'+m]; });
-      d.alarm = alarm;
-      showLoading(true);
-      try { await store.addSchedule(d); toast('등록 + 알림','success'); closeModal(); await this.renderAdminTab(); }
-      catch(err) { toast('실패','error'); } finally { showLoading(false); }
-    };
-  }
-  async delScheduleAdm(id) { if (!confirm('삭제?')) return; await store.delSchedule(id); await this.renderAdminTab(); }
-
   // ===== 기타 관리 =====
   admEtc(c) {
-    c.innerHTML = `<h2 class="text-3xl font-black mb-2">📦 기타 관리</h2><p class="text-slate-500 mb-6 font-medium">인터넷 + 물품 추천 (매물 다중 연결)</p>
+    const thisYm = todayStr().slice(0, 7);
+    const today = todayStr();
+    // 이번 달 자동이체 상태: 등록됨 / D-n / 대기(다음 접속 때 등록) / 기간 밖 / 중지
+    const recStatus = r => {
+      if (r.active === false) return '<span class="text-slate-400 font-black">⏸ 중지</span>';
+      if (r.startMonth > thisYm) return `<span class="text-slate-500 font-bold">⏳ ${esc(r.startMonth)}부터</span>`;
+      if (r.endMonth && r.endMonth < thisYm) return '<span class="text-slate-400 font-bold">종료</span>';
+      const due = recurringDate(thisYm, r.payDay);
+      const done = store.expenses.find(e => e.syncKey === `rec_${r.id}_${thisYm}`);
+      if (done) return `<span class="text-green-600 font-black">✅ ${due.slice(5).replace('-', '/')} 등록</span>`;
+      if (r.lastMonth && r.lastMonth >= thisYm) return '<span class="text-slate-400 font-bold">이번 달 처리됨</span>';
+      if (due > today) return `<span class="text-blue-600 font-black">⏳ D-${daysBetween(today, due)} (${due.slice(5).replace('-', '/')})</span>`;
+      return '<span class="text-amber-600 font-black">대기 (새로고침 시 등록)</span>';
+    };
+    const recRows = (store.recurring || []).slice().sort((a, b) => (store.prop(a.propId)?.name || '').localeCompare(store.prop(b.propId)?.name || '') || a.payDay - b.payDay).map(r => {
+      const isNet = r.internetId != null && r.internetId !== '';
+      return `<tr class="hover:bg-slate-50 ${r.active === false ? 'opacity-50' : ''}">
+        <td class="px-2 py-2 font-black">${esc(store.prop(r.propId)?.name || '(삭제된 숙소)')}</td>
+        <td class="px-2 py-2">${esc(r.majorCat)} › <b>${esc(r.category)}</b> ${isNet ? '<span class="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-black">🔗 인터넷</span>' : ''}${r.memo ? `<p class="text-[10px] text-slate-400">${esc(r.memo)}</p>` : ''}</td>
+        <td class="px-2 py-2 text-right font-black text-red-500">${fmt(r.amount)}</td>
+        <td class="px-2 py-2 font-black">매월 ${payDayLabel(r.payDay)}</td>
+        <td class="px-2 py-2 text-[10px] font-bold">${esc(r.startMonth)} ~ ${esc(r.endMonth || '')}</td>
+        <td class="px-2 py-2 text-[11px]">${recStatus(r)}</td>
+        <td class="px-2 py-2 text-center whitespace-nowrap">${isNet
+          ? `<button onclick="router.showInternetForm(${r.internetId})" class="p-1.5 bg-slate-100 rounded-lg" title="인터넷에서 수정"><i data-lucide="edit-3" class="w-3 h-3"></i></button>`
+          : `<button onclick="router.showRecurringForm(${r.id})" class="p-1.5 bg-slate-100 rounded-lg mr-1" title="수정"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delRecurring(${r.id})" class="p-1.5 bg-red-50 text-red-500 rounded-lg" title="삭제"><i data-lucide="trash-2" class="w-3 h-3"></i></button>`}</td>
+      </tr>`;
+    }).join('');
+    const monthlyTotal = (store.recurring || []).filter(r => r.active !== false && r.startMonth <= thisYm && (!r.endMonth || r.endMonth >= thisYm)).reduce((s, r) => s + num(r.amount), 0);
+
+    c.innerHTML = `<h2 class="text-3xl font-black mb-2">📦 기타 관리</h2><p class="text-slate-500 mb-6 font-medium">정기 지출(자동이체) · 인터넷 · 물품 추천</p>
+    <div class="bg-white p-6 rounded-2xl border mb-6">
+      <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+        <h3 class="font-black flex items-center gap-2"><i data-lucide="repeat" class="w-5 h-5 text-purple-600"></i>정기 지출 (매월 자동이체)</h3>
+        <div class="flex items-center gap-2"><span class="text-xs font-black text-slate-500">월 합계 ${fmt(monthlyTotal)}</span><button onclick="router.showRecurringForm()" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div>
+      </div>
+      <div class="bg-purple-50 border border-purple-200 rounded-xl p-3 mb-3 text-xs font-bold text-purple-700">🔁 설정한 자동이체일이 되면 지출 관리에 자동 등록됩니다 (월세·관리비·인터넷 등). 관리자가 접속할 때 지난 달 누락분까지 함께 등록되며, 등록된 지출을 지워도 다시 만들지 않습니다.</div>
+      ${recRows ? `<div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50 font-black text-slate-400 uppercase"><tr>${['숙소','분류','금액','자동이체일','적용 기간','이번 달','관리'].map(h=>`<th class="px-2 py-2 text-left">${h}</th>`).join('')}</tr></thead><tbody class="divide-y">${recRows}</tbody></table></div>`
+        : UI.Empty('repeat', '등록된 정기 지출이 없습니다', '+ 추가 또는 인터넷에서 자동이체일을 설정하세요')}
+    </div>
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mobile-stack">
-      <div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4"><h3 class="font-black flex items-center gap-2"><i data-lucide="wifi" class="w-5 h-5 text-blue-600"></i>인터넷</h3><button onclick="router.showInternetForm()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div><div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 text-xs font-bold text-blue-700">🔗 월비용 자동 연동</div><div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50 font-black text-slate-400 uppercase"><tr>${['숙소','통신사','요금제','월비용 🔗','설치일','약정','WiFi','관리'].map(h=>`<th class="px-2 py-2 text-left">${h}</th>`).join('')}</tr></thead><tbody class="divide-y">${store.internet.map(n=>`<tr><td class="px-2 py-2 font-black">${store.prop(n.propId)?.name||'-'}</td><td class="px-2 py-2 font-bold">${n.provider}</td><td class="px-2 py-2">${n.plan}</td><td class="px-2 py-2 text-right font-black text-red-500">${fmt(n.monthly)}</td><td class="px-2 py-2 text-[10px]">${n.installDate}</td><td class="px-2 py-2 text-[10px]">${n.contract}</td><td class="px-2 py-2 font-mono text-[10px]">${n.wifiId||''}<br/>${n.wifiPw||''}</td><td class="px-2 py-2 text-center"><button onclick="router.showInternetForm(${n.id})" class="p-1.5 bg-slate-100 rounded-lg mr-1"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delInternet(${n.id})" class="p-1.5 bg-red-50 text-red-500 rounded-lg"><i data-lucide="trash-2" class="w-3 h-3"></i></button></td></tr>`).join('')}</tbody><tfoot class="bg-slate-900 text-white font-black"><tr><td colspan="3" class="px-2 py-2 text-right">합계</td><td class="px-2 py-2 text-right">${fmt(store.internet.reduce((s,n)=>s+(+n.monthly||0),0))}</td><td colspan="4"></td></tr></tfoot></table></div></div>
-      <div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4"><h3 class="font-black flex items-center gap-2"><i data-lucide="shopping-bag" class="w-5 h-5 text-green-600"></i>물품 추천 (매물 다중 연결)</h3><button onclick="router.showProductForm()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div><div class="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-xs font-bold text-green-700">💡 적합한 매물에 다중 연결 가능</div><div class="space-y-2 max-h-[500px] overflow-y-auto scrollbar">${store.products.length?store.products.map(p=>{const linked=(p.propIds||[]).map(id=>store.prop(id)).filter(Boolean);return `<div class="p-3 bg-slate-50 rounded-xl flex items-center gap-3 hover:shadow-md transition"><img src="${p.image||'https://via.placeholder.com/60'}" onerror="this.src='https://via.placeholder.com/60'" class="w-14 h-14 rounded-lg object-cover border"><div class="flex-1 min-w-0"><div class="flex items-center gap-2 mb-1"><span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-black text-[10px]">${p.category}</span>${p.vendor?`<span class="text-[10px] text-slate-400 font-bold">${p.vendor}</span>`:''}</div><p class="font-black text-sm truncate">${p.name}</p><div class="flex flex-wrap gap-1 mt-1">${linked.length?linked.map(lp=>`<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-black">${lp.name}</span>`).join(''):'<span class="text-[10px] text-slate-400">매물 미연결</span>'}</div><p class="text-[10px] text-slate-400 truncate mt-1">${p.memo||'-'}</p></div><div class="text-right"><p class="font-black text-red-500 text-sm">${fmt(p.price)}</p><div class="flex gap-1 mt-1">${p.url?`<a href="${p.url}" target="_blank" class="p-1.5 bg-white rounded-lg text-blue-600"><i data-lucide="external-link" class="w-3 h-3"></i></a>`:''}<button onclick="router.showProductForm(${p.id})" class="p-1.5 bg-white rounded-lg"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delProduct(${p.id})" class="p-1.5 bg-white rounded-lg text-red-500"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>`}).join(''):UI.Empty('shopping-bag','등록된 물품 없음')}</div></div>
+      <div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4"><h3 class="font-black flex items-center gap-2"><i data-lucide="wifi" class="w-5 h-5 text-blue-600"></i>인터넷</h3><button onclick="router.showInternetForm()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div><div class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 text-xs font-bold text-blue-700">🔗 월비용 자동 연동 · 자동이체일을 넣으면 매월 지출이 자동 등록됩니다</div><div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50 font-black text-slate-400 uppercase"><tr>${['숙소','통신사','요금제','월비용 🔗','자동이체','설치일','약정','WiFi','관리'].map(h=>`<th class="px-2 py-2 text-left">${h}</th>`).join('')}</tr></thead><tbody class="divide-y">${store.internet.map(n=>`<tr><td class="px-2 py-2 font-black">${esc(store.prop(n.propId)?.name||'-')}</td><td class="px-2 py-2 font-bold">${esc(n.provider)}</td><td class="px-2 py-2">${esc(n.plan)}</td><td class="px-2 py-2 text-right font-black text-red-500">${fmt(n.monthly)}</td><td class="px-2 py-2 text-[10px] font-black ${n.payDay?'text-purple-600':'text-slate-300'}">${n.payDay?`매월 ${payDayLabel(n.payDay)}`:'미설정'}</td><td class="px-2 py-2 text-[10px]">${esc(n.installDate)}</td><td class="px-2 py-2 text-[10px]">${esc(n.contract)}</td><td class="px-2 py-2 font-mono text-[10px]">${esc(n.wifiId||'')}<br/>${esc(n.wifiPw||'')}</td><td class="px-2 py-2 text-center whitespace-nowrap"><button onclick="router.showInternetForm(${n.id})" class="p-1.5 bg-slate-100 rounded-lg mr-1"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delInternet(${n.id})" class="p-1.5 bg-red-50 text-red-500 rounded-lg"><i data-lucide="trash-2" class="w-3 h-3"></i></button></td></tr>`).join('')}</tbody><tfoot class="bg-slate-900 text-white font-black"><tr><td colspan="3" class="px-2 py-2 text-right">합계</td><td class="px-2 py-2 text-right">${fmt(store.internet.reduce((s,n)=>s+num(n.monthly),0))}</td><td colspan="5"></td></tr></tfoot></table></div></div>
+      <div class="bg-white p-6 rounded-2xl border"><div class="flex justify-between items-center mb-4"><h3 class="font-black flex items-center gap-2"><i data-lucide="shopping-bag" class="w-5 h-5 text-green-600"></i>물품 추천 (매물 다중 연결)</h3><button onclick="router.showProductForm()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-black">+ 추가</button></div><div class="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-xs font-bold text-green-700">💡 적합한 매물에 다중 연결 가능</div><div class="space-y-2 max-h-[500px] overflow-y-auto scrollbar">${store.products.length?store.products.map(p=>{const linked=(p.propIds||[]).map(id=>store.prop(id)).filter(Boolean);return `<div class="p-3 bg-slate-50 rounded-xl flex items-center gap-3 hover:shadow-md transition"><img src="${p.image||'https://via.placeholder.com/60'}" onerror="this.src='https://via.placeholder.com/60'" class="w-14 h-14 rounded-lg object-cover border"><div class="flex-1 min-w-0"><div class="flex items-center gap-2 mb-1"><span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-black text-[10px]">${esc(p.category)}</span>${p.vendor?`<span class="text-[10px] text-slate-400 font-bold">${esc(p.vendor)}</span>`:''}</div><p class="font-black text-sm truncate">${esc(p.name)}</p><div class="flex flex-wrap gap-1 mt-1">${linked.length?linked.map(lp=>`<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-black">${esc(lp.name)}</span>`).join(''):'<span class="text-[10px] text-slate-400">매물 미연결</span>'}</div><p class="text-[10px] text-slate-400 truncate mt-1">${esc(p.memo||'-')}</p></div><div class="text-right"><p class="font-black text-red-500 text-sm">${fmt(p.price)}</p><div class="flex gap-1 mt-1">${p.url?`<a href="${esc(p.url)}" target="_blank" class="p-1.5 bg-white rounded-lg text-blue-600"><i data-lucide="external-link" class="w-3 h-3"></i></a>`:''}<button onclick="router.showProductForm(${p.id})" class="p-1.5 bg-white rounded-lg"><i data-lucide="edit-3" class="w-3 h-3"></i></button><button onclick="router.delProduct(${p.id})" class="p-1.5 bg-white rounded-lg text-red-500"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div></div></div>`}).join(''):UI.Empty('shopping-bag','등록된 물품 없음')}</div></div>
     </div>`;
     lucide.createIcons();
   }
-  
+
+  // 자동이체일 선택지 (31 = 말일: 30일까지인 달은 마지막 날)
+  _payDayOptions(sel, { blank = '' } = {}) {
+    return (blank ? `<option value="">${blank}</option>` : '')
+      + Array.from({ length: 31 }, (_, i) => i + 1).map(d => `<option value="${d}" ${+sel === d ? 'selected' : ''}>${d === 31 ? '말일 (31일)' : `${d}일`}</option>`).join('');
+  }
+
   showInternetForm(nid=null) {
     const n = nid?store.internet.find(x=>x.id===parseInt(nid)):{id:'',propId:store.properties[0]?.id,provider:'KT',plan:'기가 인터넷',monthly:33000,installDate:todayStr(),contract:'3년',wifiId:'',wifiPw:''};
-    openModal(nid?'✏️ 인터넷 수정':'🆕 인터넷 등록', `<form id="nf" class="space-y-4"><div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs font-bold text-blue-700">🔗 월비용 수정 시 지출 자동 연동</div><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}" ${n.propId===p.id?'selected':''}>${p.name}</option>`).join('')}</select><div class="grid grid-cols-2 gap-3"><input name="provider" value="${n.provider}" placeholder="통신사" class="p-3 border rounded-xl font-bold" required><input name="plan" value="${n.plan}" placeholder="요금제" class="p-3 border rounded-xl font-bold" required></div><div><label class="text-[10px] font-black text-red-500 uppercase">월 비용</label><input type="number" name="monthly" value="${n.monthly}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl mt-1" required></div><div class="grid grid-cols-2 gap-3"><input type="date" name="installDate" value="${n.installDate}" class="p-3 border rounded-xl font-bold"><input name="contract" value="${n.contract}" placeholder="약정" class="p-3 border rounded-xl font-bold"></div><div class="grid grid-cols-2 gap-3"><input name="wifiId" value="${n.wifiId||''}" placeholder="WiFi SSID" class="p-3 border rounded-xl font-mono"><input name="wifiPw" value="${n.wifiPw||''}" placeholder="WiFi 비밀번호" class="p-3 border rounded-xl font-mono"></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">${nid?'수정':'등록'}</button></form>`, 'max-w-2xl');
+    if (!n) { toast('인터넷 정보를 찾을 수 없습니다','error'); return; }
+    const rule = nid ? (store.recurring || []).find(r => String(r.internetId) === String(n.id)) : null;
+    const thisYm = todayStr().slice(0, 7);
+    // 설치월에는 기존 '자동연동' 지출(설치일자 1건)이 이미 있으므로 기본 시작월은 그다음 달부터
+    const installNext = n.installDate ? nextMonthStr(String(n.installDate).slice(0, 7)) : thisYm;
+    const defStart = rule?.startMonth || (installNext > thisYm ? installNext : thisYm);
+    openModal(nid?'✏️ 인터넷 수정':'🆕 인터넷 등록', `<form id="nf" class="space-y-4"><div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs font-bold text-blue-700">🔗 월비용 수정 시 지출 자동 연동</div><select name="propId" class="w-full p-3 border rounded-xl font-bold" required>${store.properties.map(p=>`<option value="${p.id}" ${n.propId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select><div class="grid grid-cols-2 gap-3"><input name="provider" value="${esc(n.provider)}" placeholder="통신사" class="p-3 border rounded-xl font-bold" required><input name="plan" value="${esc(n.plan)}" placeholder="요금제" class="p-3 border rounded-xl font-bold" required></div><div><label class="text-[10px] font-black text-red-500 uppercase">월 비용</label><input ${moneyAttrs()} name="monthly" value="${moneyVal(n.monthly, true)}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl mt-1" required></div>
+      <div class="bg-purple-50 border-2 border-purple-200 rounded-xl p-4">
+        <p class="text-xs font-black text-purple-700 uppercase mb-3">🔁 매월 자동이체 (지출 자동 등록)</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-[10px] font-black text-purple-600 uppercase">자동이체일</label><select name="payDay" class="w-full p-3 border rounded-xl font-bold mt-1 bg-white">${this._payDayOptions(n.payDay || rule?.payDay || '', { blank: '미설정 (자동 등록 안 함)' })}</select></div>
+          <div><label class="text-[10px] font-black text-purple-600 uppercase">자동 등록 시작월</label><input type="month" name="payStart" value="${esc(defStart)}" class="w-full p-3 border rounded-xl font-bold mt-1 bg-white"></div>
+        </div>
+        <p class="text-[10px] text-purple-600 font-bold mt-2">자동이체일이 되면 매월 '고정지출 › 인터넷비'로 지출이 자동 등록됩니다. 시작월의 자동이체일이 이미 지났으면 그 달 분도 바로 등록됩니다.</p>
+      </div>
+      <div class="grid grid-cols-2 gap-3"><div><label class="text-[10px] font-black text-slate-400 uppercase">설치일</label><input type="date" name="installDate" value="${esc(n.installDate||'')}" class="w-full p-3 border rounded-xl font-bold mt-1"></div><div><label class="text-[10px] font-black text-slate-400 uppercase">약정</label><input name="contract" value="${esc(n.contract||'')}" placeholder="약정" class="w-full p-3 border rounded-xl font-bold mt-1"></div></div><div class="grid grid-cols-2 gap-3"><input name="wifiId" value="${esc(n.wifiId||'')}" placeholder="WiFi SSID" class="p-3 border rounded-xl font-mono"><input name="wifiPw" value="${esc(n.wifiPw||'')}" placeholder="WiFi 비밀번호" class="p-3 border rounded-xl font-mono"></div><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase">${nid?'수정':'등록'}</button></form>`, 'max-w-2xl');
     document.getElementById('nf').onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const d = {}; fd.forEach((v,k)=>{ d[k]=v; });
+      if (d.payDay && !/^\d{4}-\d{2}$/.test(d.payStart || '')) { toast('자동 등록 시작월을 YYYY-MM 형식으로 입력하세요','error'); return; }
       if (nid) d.id = parseInt(nid);
       showLoading(true);
-      try { await store.upsertInternet(d); toast('완료','success'); closeModal(); await this.renderAdminTab(); }
-      catch(err) { toast('실패','error'); } finally { showLoading(false); }
+      try {
+        await store.upsertInternet(d);
+        const created = d.payDay ? await store.runRecurring() : 0;
+        toast(`완료${created ? ` · 🔁 지출 ${created}건 자동 등록` : ''}`,'success'); closeModal(); await this.renderAdminTab();
+      }
+      catch(err) { toast('실패: '+err.message,'error'); } finally { showLoading(false); }
     };
   }
-  async delInternet(id) { if (!confirm('삭제?')) return; showLoading(true); try { await store.delInternet(id); toast('삭제','success'); await this.renderAdminTab(); } catch(e) { toast('실패','error'); } finally { showLoading(false); } }
+  async delInternet(id) { if (!confirm('삭제하시겠습니까?\n자동이체 설정도 함께 삭제되며, 이미 등록된 월별 지출 내역은 유지됩니다.')) return; showLoading(true); try { await store.delInternet(id); toast('삭제','success'); await this.renderAdminTab(); } catch(e) { toast('실패','error'); } finally { showLoading(false); } }
+
+  // ===== [v3.5] 정기 지출 등록/수정 =====
+  showRecurringForm(id = null) {
+    if (!store.properties.length) { toast('등록된 매물이 없습니다','error'); return; }
+    const r = id ? (store.recurring || []).find(x => x.id == id) : null;
+    if (id && !r) { toast('정기 지출을 찾을 수 없습니다','error'); return; }
+    const v = r || { propId: store.properties[0].id, majorCat: store.majorCats.includes('고정지출') ? '고정지출' : store.majorCats[0], category: '', amount: '', payDay: 25, startMonth: todayStr().slice(0, 7), endMonth: '', memo: '', active: true };
+    openModal(r ? '✏️ 정기 지출 수정' : '🔁 정기 지출 등록', `<form id="rf" class="space-y-3">
+      <div class="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs font-bold text-purple-700">매월 자동이체일이 되면 지출 관리에 자동으로 등록됩니다. 금액을 바꾸면 다음 등록분부터 적용됩니다.</div>
+      <div><label class="text-[10px] font-black text-slate-400 uppercase">숙소</label><select name="propId" class="w-full p-3 border rounded-xl font-bold mt-1" required>${store.properties.map(p => `<option value="${p.id}" ${+v.propId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">대분류</label><select name="majorCat" id="rfMc" class="w-full p-3 border rounded-xl font-bold mt-1" required>${store.majorCats.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('')}</select></div>
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">소분류</label><select name="category" id="rfSc" class="w-full p-3 border rounded-xl font-bold mt-1" required></select></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-[10px] font-black text-red-500 uppercase">월 금액</label><input ${moneyAttrs()} name="amount" value="${moneyVal(v.amount)}" placeholder="0" class="w-full p-3 border-2 rounded-xl font-black text-red-500 text-xl mt-1" required></div>
+        <div><label class="text-[10px] font-black text-purple-600 uppercase">자동이체일</label><select name="payDay" class="w-full p-3 border rounded-xl font-bold mt-1" required>${this._payDayOptions(v.payDay)}</select></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">시작월</label><input type="month" name="startMonth" value="${esc(v.startMonth)}" class="w-full p-3 border rounded-xl font-bold mt-1" required></div>
+        <div><label class="text-[10px] font-black text-slate-400 uppercase">종료월 (선택)</label><input type="month" name="endMonth" value="${esc(v.endMonth || '')}" class="w-full p-3 border rounded-xl font-bold mt-1"></div>
+      </div>
+      <input name="memo" value="${esc(v.memo || '')}" placeholder="메모 (예: 월세 자동이체 / OO은행)" class="w-full p-3 border rounded-xl font-bold">
+      <label class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer"><input type="checkbox" name="active" ${v.active !== false ? 'checked' : ''} class="w-4 h-4"><span class="text-sm font-bold">사용 (체크 해제 시 자동 등록 중지)</span></label>
+      <button class="w-full bg-purple-600 text-white py-4 rounded-xl font-black uppercase">${r ? '수정 저장' : '등록'}</button>
+    </form>`, 'max-w-xl');
+    this._bindCatSelects('rfMc', 'rfSc', v.majorCat, v.category);
+    document.getElementById('rf').onsubmit = async e => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(e.target));
+      d.active = !!d.active;
+      if (!d.category) { toast('소분류를 선택하세요 (📁 지출 카테고리에서 추가)','error'); return; }
+      if (!num(d.amount)) { toast('금액을 입력하세요','error'); return; }
+      if (!/^\d{4}-\d{2}$/.test(d.startMonth || '') || (d.endMonth && !/^\d{4}-\d{2}$/.test(d.endMonth))) { toast('시작월/종료월을 YYYY-MM 형식으로 입력하세요','error'); return; }
+      if (d.endMonth && d.endMonth < d.startMonth) { toast('종료월이 시작월보다 빠릅니다','error'); return; }
+      if (r) Object.assign(d, { id: r.id, lastMonth: r.lastMonth || '', internetId: r.internetId, createdAt: r.createdAt });
+      showLoading(true);
+      try {
+        await store.upsertRecurring(d);
+        const created = await store.runRecurring();
+        toast(`${r ? '수정됨' : '등록됨'}${created ? ` · 🔁 지출 ${created}건 자동 등록` : ''}`, 'success');
+        closeModal(); await this.renderAdminTab();
+      } catch (err) { toast('실패: ' + err.message, 'error'); } finally { showLoading(false); }
+    };
+  }
+
+  async delRecurring(id) {
+    if (!confirm('이 정기 지출 설정을 삭제하시겠습니까?\n이미 등록된 지출 내역은 유지됩니다.')) return;
+    showLoading(true);
+    try { await store.delRecurring(id); toast('삭제됨','success'); await this.renderAdminTab(); }
+    catch (e) { toast('실패: ' + e.message,'error'); } finally { showLoading(false); }
+  }
 
   showProductForm(pid=null) {
     const p = pid?store.products.find(x=>x.id===parseInt(pid)):{id:'',category:'침구',name:'',price:10000,url:'',image:'',memo:'',vendor:'쿠팡',propIds:[]};
     if (!p.propIds) p.propIds = [];
     const cats = ['침구','욕실','주방','가전','소모품','청소용품','편의용품','인테리어','기타'];
-    openModal(pid?'✏️ 물품 수정':'🆕 물품 등록', `<form id="prf" class="space-y-4"><div class="grid grid-cols-2 gap-3"><select name="category" class="p-3 border rounded-xl font-bold" required>${cats.map(c=>`<option ${p.category===c?'selected':''}>${c}</option>`).join('')}</select><input name="vendor" value="${p.vendor||''}" placeholder="판매처" class="p-3 border rounded-xl font-bold"></div><input name="name" value="${p.name}" placeholder="상품명" class="w-full p-3 border rounded-xl font-bold" required><div><label class="text-[10px] font-black text-red-500 uppercase">가격</label><input type="number" name="price" value="${p.price}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl mt-1" required></div><input name="image" value="${p.image||''}" placeholder="이미지 URL" class="w-full p-3 border rounded-xl font-bold"><input name="url" value="${p.url||''}" placeholder="구매 링크" class="w-full p-3 border rounded-xl font-bold"><textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl h-20 font-bold">${p.memo||''}</textarea>
-    <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4"><p class="text-xs font-black text-amber-700 uppercase mb-3">🏠 적합한 매물 (다중 선택)</p><div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto scrollbar">${store.properties.map(prop=>`<label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer hover:bg-amber-100"><input type="checkbox" name="prop_${prop.id}" ${p.propIds.includes(prop.id)?'checked':''}><span class="text-xs font-bold">${prop.name}</span></label>`).join('')}</div></div>
+    openModal(pid?'✏️ 물품 수정':'🆕 물품 등록', `<form id="prf" class="space-y-4"><div class="grid grid-cols-2 gap-3"><select name="category" class="p-3 border rounded-xl font-bold" required>${cats.map(c=>`<option ${p.category===c?'selected':''}>${c}</option>`).join('')}</select><input name="vendor" value="${esc(p.vendor||'')}" placeholder="판매처" class="p-3 border rounded-xl font-bold"></div><input name="name" value="${esc(p.name)}" placeholder="상품명" class="w-full p-3 border rounded-xl font-bold" required><div><label class="text-[10px] font-black text-red-500 uppercase">가격</label><input ${moneyAttrs()} name="price" value="${moneyVal(p.price, true)}" class="w-full p-4 border-2 rounded-xl font-black text-red-500 text-2xl mt-1" required></div><input name="image" value="${esc(p.image||'')}" placeholder="이미지 URL" class="w-full p-3 border rounded-xl font-bold"><input name="url" value="${esc(p.url||'')}" placeholder="구매 링크" class="w-full p-3 border rounded-xl font-bold"><textarea name="memo" placeholder="메모" class="w-full p-3 border rounded-xl h-20 font-bold">${esc(p.memo||'')}</textarea>
+    <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-4"><p class="text-xs font-black text-amber-700 uppercase mb-3">🏠 적합한 매물 (다중 선택)</p><div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto scrollbar">${store.properties.map(prop=>`<label class="flex items-center gap-2 p-2 bg-white rounded-lg cursor-pointer hover:bg-amber-100"><input type="checkbox" name="prop_${prop.id}" ${p.propIds.includes(prop.id)?'checked':''}><span class="text-xs font-bold">${esc(prop.name)}</span></label>`).join('')}</div></div>
     <button class="w-full bg-green-600 text-white py-4 rounded-xl font-black uppercase">${pid?'수정':'등록'}</button></form>`, 'max-w-2xl');
     document.getElementById('prf').onsubmit = async e => {
       e.preventDefault();
@@ -3600,8 +3900,8 @@ class Router {
     if (period === 'day') from = to = todayStr();
     else if (period === 'week') {
       const d = new Date(); const day = d.getDay(); const diff = d.getDate() - day;
-      from = new Date(d.setDate(diff)).toISOString().split('T')[0];
-      to = new Date(d.setDate(diff+6)).toISOString().split('T')[0];
+      from = ymdLocal(new Date(d.setDate(diff)));
+      to = addDays(from, 6);
     } else if (period === 'month') {
       const fd = new Date(from || todayStr());
       from = `${fd.getFullYear()}-${String(fd.getMonth()+1).padStart(2,'0')}-01`;
@@ -3799,10 +4099,10 @@ class Router {
     }));
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(roiSheet), '매물ROI');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ltvSheet), '고객LTV');
+    XLSX.utils.book_append_sheet(wb, xlsxMoneyCols(XLSX.utils.json_to_sheet(roiSheet), ['매출','초기투자','운영지출','순이익']), '매물ROI');
+    XLSX.utils.book_append_sheet(wb, xlsxMoneyCols(XLSX.utils.json_to_sheet(ltvSheet), ['총매출','평균단가']), '고객LTV');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(heatmapSheet), '요일별가동');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(yearSheet), '연도별매출');
+    XLSX.utils.book_append_sheet(wb, xlsxMoneyCols(XLSX.utils.json_to_sheet(yearSheet), ['매출']), '연도별매출');
     XLSX.writeFile(wb, `고급분석_${f.from}_${f.to}.xlsx`);
     toast('📥 다운로드 완료', 'success');
   }
@@ -3830,7 +4130,7 @@ class Router {
             contact: row['연락처'] || '',
             platform: row['플랫폼'] || '직접예약',
             people: +row['인원'] || 2,
-            price: +row['가격'] || 0,
+            price: num(row['가격']),
             memo: row['메모'] || '',
             nationality: '한국'
           });
@@ -3848,7 +4148,7 @@ class Router {
             date: row['날짜'] || todayStr(),
             majorCat: row['대분류'] || '변동지출',
             category: row['소분류'] || '기타',
-            amount: +row['금액'] || 0,
+            amount: num(row['금액']),
             memo: row['메모'] || ''
           });
           added++;
@@ -4594,6 +4894,17 @@ class Router {
         </div>
       </div>
 
+      <div class="bg-white border-2 border-red-200 rounded-2xl p-6 mb-6">
+        <h3 class="font-black text-lg text-red-700 flex items-center gap-2"><i data-lucide="eraser" class="w-5 h-5"></i>🧹 테스트 데이터 정리</h3>
+        <p class="text-sm text-slate-600 font-bold mt-1">기준일 <b>이전에 등록된 숙소</b>와 그 숙소의 예약·지출·스케줄·채팅·인터넷·정기지출을 한 번에 삭제합니다. 삭제 전 대상 목록을 확인하고 숙소별로 제외할 수 있으며, 실행 직전 전체 백업 파일이 자동으로 내려받아집니다.</p>
+        <div class="flex gap-2 mt-3 items-center flex-wrap">
+          <label class="text-xs font-black text-slate-500">기준일</label>
+          <input type="date" id="cleanupCutoff" value="2026-09-17" class="p-3 border rounded-xl font-bold text-sm">
+          <span class="text-xs font-bold text-slate-500">0시 이전 등록분 (기준일 당일 등록분은 유지)</span>
+          <button onclick="router.showCleanupPreview()" class="bg-red-500 text-white px-5 py-3 rounded-xl font-black text-sm">🔍 삭제 대상 미리보기</button>
+        </div>
+      </div>
+
       <div class="bg-gradient-to-br from-purple-600 via-pink-600 to-rose-600 text-white p-6 rounded-2xl mb-6 shadow-2xl">
         <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
           <div>
@@ -4653,6 +4964,94 @@ class Router {
     };
     lucide.createIcons();
   }
+  /* ===== [v3.5] 테스트 데이터 정리 =====
+     등록 시각은 createdAt, 없으면 Date.now() 로 발급된 id 로 판단한다 (시드처럼 작은 id 는 가장 오래된 것으로 취급).
+     삭제 대상: 선택한 숙소 + 그 숙소의 연결 데이터 / (옵션) 없는 숙소를 가리키는 고아 데이터 /
+     (옵션) 남기는 숙소의 기준일 이전 등록 예약·지출·스케줄 */
+  showCleanupPreview() {
+    const v = document.getElementById('cleanupCutoff')?.value || this._cleanup?.cutoffStr;
+    if (!isDateStr(v)) { toast('기준일을 선택하세요','error'); return; }
+    const [y, m, d] = v.split('-').map(Number);
+    const cutoff = new Date(y, m - 1, d).getTime();
+    const old = store.properties.filter(p => regTime(p) < cutoff);
+    const prev = this._cleanup && this._cleanup.cutoffStr === v ? this._cleanup : null;
+    this._cleanup = prev || { cutoff, cutoffStr: v, propIds: new Set(old.map(p => p.id)), orphans: true, oldInKept: false };
+    this._renderCleanupPreview();
+  }
+
+  _cleanupPlan() {
+    const cu = this._cleanup;
+    const plan = store.propLinkedPlan([...cu.propIds]);
+    const add = (col, ids) => { plan[col] = [...new Set([...(plan[col] || []), ...ids])]; };
+    const cols = ['bookings', 'schedule', 'expenses', 'chats', 'internet', 'recurring'];
+    const known = new Set(store.properties.map(p => p.id));
+    const orphan = {}, oldKept = {};
+    cols.forEach(col => {
+      orphan[col] = (store[col] || []).filter(x => x.propId != null && !known.has(Number(x.propId))).map(x => x.id);
+      oldKept[col] = ['bookings', 'schedule', 'expenses'].includes(col)
+        ? (store[col] || []).filter(x => known.has(Number(x.propId)) && !cu.propIds.has(Number(x.propId)) && regTime(x) < cu.cutoff).map(x => x.id)
+        : [];
+      if (cu.orphans) add(col, orphan[col]);
+      if (cu.oldInKept) add(col, oldKept[col]);
+    });
+    plan.memoKeys = store.orphanMemoKeys(plan.bookings);
+    return { plan, orphan, oldKept };
+  }
+
+  _renderCleanupPreview() {
+    const cu = this._cleanup;
+    const { plan, orphan, oldKept } = this._cleanupPlan();
+    const fmtReg = x => { const t = regTime(x); return t ? ymdLocal(new Date(t)) + ' ' + new Date(t).toTimeString().slice(0, 5) : '초기 데이터'; };
+    const old = store.properties.filter(p => regTime(p) < cu.cutoff).sort((a, b) => regTime(a) - regTime(b));
+    const newer = store.properties.filter(p => regTime(p) >= cu.cutoff);
+    const cnt = (col, pid) => (store[col] || []).filter(x => Number(x.propId) === pid).length;
+    const sum = o => Object.values(o).reduce((s, a) => s + a.length, 0);
+    const labels = { bookings: '예약', schedule: '스케줄', expenses: '지출', chats: '채팅', internet: '인터넷', recurring: '정기지출' };
+    const totals = Object.keys(labels).map(k => `${labels[k]} ${plan[k].length}`).join(' · ');
+    openModal(`🧹 테스트 데이터 정리 — ${cu.cutoffStr} 이전 등록분`, `<div class="space-y-4">
+      <div class="bg-amber-50 border-2 border-amber-200 rounded-xl p-3 text-xs font-bold text-amber-800">숙소 ${store.properties.length}개 중 기준일 이전 등록 <b>${old.length}개</b>, 이후 등록 ${newer.length}개(유지). 실제로 쓰는 숙소가 섞여 있으면 체크를 해제하세요.</div>
+      <div class="flex gap-2"><button type="button" onclick="router._cleanupToggleAll(true)" class="bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-black">전체 선택</button><button type="button" onclick="router._cleanupToggleAll(false)" class="bg-slate-200 px-3 py-2 rounded-lg text-xs font-black">전체 해제</button></div>
+      <div class="max-h-72 overflow-y-auto scrollbar border rounded-xl divide-y">${old.length ? old.map(p => `<label class="flex items-center gap-3 p-3 hover:bg-red-50 cursor-pointer">
+          <input type="checkbox" ${cu.propIds.has(p.id) ? 'checked' : ''} onchange="router._cleanupToggle(${p.id}, this.checked)" class="w-4 h-4">
+          <span class="flex-1 min-w-0"><span class="block font-black text-sm truncate">${esc(p.name)}${p.hidden ? ' <span class="text-[9px] bg-slate-400 text-white px-1 rounded">숨김</span>' : ''}</span><span class="block text-[10px] text-slate-400 font-bold">등록 ${fmtReg(p)}</span></span>
+          <span class="text-[10px] font-bold text-slate-500 text-right">예약 ${cnt('bookings', p.id)} · 지출 ${cnt('expenses', p.id)} · 스케줄 ${cnt('schedule', p.id)}</span>
+        </label>`).join('') : '<p class="p-6 text-center text-sm font-bold text-slate-400">기준일 이전에 등록된 숙소가 없습니다</p>'}</div>
+      ${newer.length ? `<details class="bg-green-50 rounded-xl p-3"><summary class="text-xs font-black text-green-700 cursor-pointer">✅ 유지되는 숙소 ${newer.length}개 (기준일 이후 등록)</summary><p class="text-xs font-bold text-green-700 mt-2">${newer.map(p => `${esc(p.name)} (${fmtReg(p)})`).join(', ')}</p></details>` : ''}
+      <label class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer"><input type="checkbox" ${cu.orphans ? 'checked' : ''} onchange="router._cleanup.orphans=this.checked;router._renderCleanupPreview()" class="w-4 h-4"><span class="text-sm font-bold">이미 삭제된 숙소에 남아 있는 데이터도 정리 (${sum(orphan)}건 · 어느 화면에도 안 보이는 데이터)</span></label>
+      <label class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer"><input type="checkbox" ${cu.oldInKept ? 'checked' : ''} onchange="router._cleanup.oldInKept=this.checked;router._renderCleanupPreview()" class="w-4 h-4"><span class="text-sm font-bold">남기는 숙소의 기준일 이전 등록 예약·지출·스케줄도 삭제 (${sum(oldKept)}건)</span></label>
+      <div class="bg-red-50 border-2 border-red-300 rounded-xl p-4">
+        <p class="text-sm font-black text-red-700">삭제 예정: 숙소 ${plan.properties.length}개 · ${totals}${plan.memoKeys.length ? ` · 고객메모 ${plan.memoKeys.length}` : ''}</p>
+        <p class="text-xs font-bold text-red-600 mt-1">되돌릴 수 없습니다. 실행하면 먼저 전체 백업(JSON)이 내려받아지고, 문제가 있으면 백업 복원으로 되돌릴 수 있습니다.</p>
+        <div class="flex gap-2 mt-3 flex-wrap"><input id="cleanupConfirm" placeholder="확인을 위해 '삭제' 입력" class="flex-1 min-w-[160px] p-3 border-2 border-red-200 rounded-xl font-bold text-sm"><button type="button" onclick="router.runCleanup()" class="bg-red-600 text-white px-5 py-3 rounded-xl font-black text-sm">백업 후 삭제 실행</button></div>
+      </div>
+    </div>`, 'max-w-3xl');
+  }
+  _cleanupToggle(pid, on) { if (on) this._cleanup.propIds.add(pid); else this._cleanup.propIds.delete(pid); this._renderCleanupPreview(); }
+  _cleanupToggleAll(on) {
+    const cu = this._cleanup;
+    cu.propIds = new Set(on ? store.properties.filter(p => regTime(p) < cu.cutoff).map(p => p.id) : []);
+    this._renderCleanupPreview();
+  }
+
+  async runCleanup() {
+    if ((document.getElementById('cleanupConfirm')?.value || '').trim() !== '삭제') { toast("확인란에 '삭제'를 입력하세요",'warning'); return; }
+    const { plan } = this._cleanupPlan();
+    const total = ['properties', 'bookings', 'schedule', 'expenses', 'chats', 'internet', 'recurring'].reduce((s, k) => s + plan[k].length, 0);
+    if (!total) { toast('삭제할 데이터가 없습니다','info'); return; }
+    showLoading(true);
+    try {
+      await this.exportBackup();   // 삭제 전 전체 백업 (되돌리기용)
+      showLoading(true);           // exportBackup 이 로딩 표시를 끄므로 다시 켠다
+      const n = await store.purge(plan, `🧹 테스트 데이터 정리 (${this._cleanup.cutoffStr} 이전 등록): 숙소 ${plan.properties.length}개 포함 ${total}건 삭제`);
+      toast(`🧹 ${n}건 삭제 완료 (백업 파일을 보관하세요)`,'success');
+      this._cleanup = null;
+      closeModal();
+      await this.renderAdminTab();
+    } catch (e) {
+      toast('정리 중 오류: ' + e.message + ' — 다시 실행하면 남은 항목만 정리됩니다','error');
+    } finally { showLoading(false); }
+  }
+
     // ===== [v3.3] AI 스마트 동기화 실행 =====
   async runSmartSync() {
     const url = document.getElementById('gsUrl').value.trim();
@@ -5352,10 +5751,10 @@ class Router {
         { key:'group', label:'지역 그룹', type:'select', options:store.groups },
         { key:'location', label:'위치', type:'text' },
         { key:'address', label:'상세위치', type:'text' },
-        { key:'price', label:'판매가(1박)', required:true, type:'number' },
-        { key:'priceWeek', label:'판매가(주당)', type:'number' },
-        { key:'mgmtFeeWeek', label:'관리비(주당)', type:'number' },
-        { key:'cleanFee', label:'청소비(1회)', type:'number' },
+        { key:'price', label:'판매가(1박)', required:true, type:'money' },
+        { key:'priceWeek', label:'판매가(주당)', type:'money' },
+        { key:'mgmtFeeWeek', label:'관리비(주당)', type:'money' },
+        { key:'cleanFee', label:'청소비(1회)', type:'money' },
         { key:'manager', label:'담당자', type:'text' }
       ],
       bookings: [
@@ -5364,7 +5763,7 @@ class Router {
         { key:'contact', label:'연락처', type:'text' },
         { key:'checkIn', label:'체크인', required:true, type:'date' },
         { key:'checkOut', label:'체크아웃', required:true, type:'date' },
-        { key:'price', label:'가격', required:true, type:'number' },
+        { key:'price', label:'가격', required:true, type:'money' },
         { key:'platform', label:'플랫폼', type:'select', options:store.platforms.map(p=>p.name) },
         { key:'people', label:'인원', type:'number' },
         { key:'nationality', label:'국적', type:'text' }
@@ -5374,7 +5773,7 @@ class Router {
         { key:'date', label:'날짜', required:true, type:'date' },
         { key:'majorCat', label:'대분류', type:'select', options:store.majorCats },
         { key:'category', label:'소분류', required:true, type:'text' },
-        { key:'amount', label:'금액', required:true, type:'number' },
+        { key:'amount', label:'금액', required:true, type:'money' },
         { key:'memo', label:'메모', type:'text' }
       ]
     };
@@ -5397,7 +5796,7 @@ class Router {
           }
           return `<div>
             <label class="text-[10px] font-black text-slate-500 uppercase">${f.label}${f.required?'*':''}${f.readonly?' (읽기전용)':''}</label>
-            <input type="${f.type}" name="${f.key}" value="${val}" class="w-full p-3 border rounded-xl font-bold mt-1" ${f.required?'required':''} ${f.readonly?'readonly':''}>
+            <input ${f.type === 'money' ? moneyAttrs() : `type="${f.type}"`} name="${f.key}" value="${f.type === 'money' ? moneyVal(val, true) : esc(val)}" class="w-full p-3 border rounded-xl font-bold mt-1" ${f.required?'required':''} ${f.readonly?'readonly':''}>
           </div>`;
         }).join('')}
         <div class="flex gap-2 pt-3">
@@ -5413,10 +5812,11 @@ class Router {
       const newData = {};
       fd.forEach((v, k) => { newData[k] = v; });
       
-      // 숫자 변환
-      ['price', 'cost', 'amount', 'people'].forEach(f => {
-        if (newData[f] !== undefined) newData[f] = +newData[f] || 0;
+      // 숫자 변환 (금액 칸은 콤마가 들어 있으므로 num)
+      ['price', 'priceWeek', 'mgmtFeeWeek', 'cleanFee', 'cost', 'amount'].forEach(f => {
+        if (newData[f] !== undefined) newData[f] = num(newData[f]);
       });
+      if (newData.people !== undefined) newData.people = +newData.people || 0;
       
       const r = this._smartSyncResult;
       if (mode === 'add') {
